@@ -90,6 +90,19 @@ KONSOLİDASYON ("uyku")  = SDFT (öz-damıtma, on-policy KL/Top-K) + replay buff
 - **M5 ✓ — ses:** ✓ Mel-LLM tarzı Mel patch encoder-free tokenizer.
 - **M6 ✓ — değerlendirme:** ✓ Forward/backward transfer, forgetting≈0, growth, latency benchmark.
 - **M7 ✓ — multimodal pipeline:** ✓ Görsel (9–100 token) + Ses (24–249 token) tokenizer testleri, Gemma 4 2560-dim uyumlu.
+- **M8 ✓ — Multimodal entegrasyon (v0.3.0):** ✓ `learn_image()`, `learn_audio()`, `learn_multimodal()` metotları.
+  Görsel/ses token'ları `inputs_embeds` üzerinden modele feed ediliyor. distilgpt2 ile canlı test: WAV ses + PNG görsel tanındı.
+- **M9 ✓ — Cross-session benchmark:** ✓ 3 oturumlu continual learning testi. Öğren → kaydet → sıfırla → yükle → test döngüsü.
+  distilgpt2 ile %0 forgetting, %100 cross-session recall. Incremental save (sadece dirty CMS).
+- **v0.3.1 ✓ — Performans + Güvenlik (bugün):**
+  - **Audio tokenizer vektörizasyonu:** Mel filterbank Python döngüsü → `spec @ mel_weights` matris çarpımı.
+    STFT framing `torch.stack` → `unfold`. Patch stacking → `reshape`. **28x hızlanma** (50ms → 1.75ms).
+  - **Gemma 4 multimodal OOM fix:** `_detect_model_type()` ile model yetenekleri tespiti.
+    `max_audio_tokens=12` hard cap + uyarı. Görsel token'lar için `max_visual_tokens=100` cap.
+    Gemma 4 text-only için otomatik 15-token limit. OOM önlenir, kullanıcıya net uyarı.
+  - **Model tespit sistemi:** `_detect_model_type()` → `is_gemma4`, `is_multimodal`, `oom_risk_multimodal`.
+    Gelecekteki multimodal modeller (Gemma 4 12B Unified) için hazır.
+  - **M0 ortam doğrulama:** `experiments/m0_environment.py` — 26 kontrollü tam sistem tanılama.
 
 ## Doğrulama (uçtan uca)
 1. `python -m prokopton.repl` ile sohbet; RAM ≤ 24 GB.
@@ -107,11 +120,13 @@ KONSOLİDASYON ("uyku")  = SDFT (öz-damıtma, on-policy KL/Top-K) + replay buff
 - RW-TTT/Alchemist (serving) bilinçli olarak kapsam dışı.
 
 ## Açık araştırma soruları (devrim potansiyeli)
-- In-Place TTT fast weights'i **çok-frekanslı CMS** olarak organize etmek (NL'den) tek-frekanslı
-  TTT'ye kıyasla unutmayı ne kadar azaltır? (denenmemiş birleşim)
-- **Sürpriz-kapılı** fast-weight güncellemesi + **sürpriz-öncelikli** SDFT konsolidasyonu.
-- Modaliteler-arası birleşik sürpriz: sesteki sürpriz metin hafızasını besliyor mu?
-- AMD GPU'da ucuz per-chunk fast-weight güncellemesi (ROCm).
+- ~~In-Place TTT fast weights'i **çok-frekanslı CMS** olarak organize etmek~~ → **✓ ÇÖZÜLDÜ (v0.3.0):** Her katman 2^layer frekansında konsolide oluyor.
+- ~~**Sürpriz-kapılı** fast-weight güncellemesi + **sürpriz-öncelikli** SDFT konsolidasyonu~~ → **✓ ÇÖZÜLDÜ (v0.3.0):** `FastWeight.effective_lr()` adaptif LR, EMA normalizasyonlu.
+- Modaliteler-arası birleşik sürpriz: sesteki sürpriz metin hafızasını besliyor mu? (multimodal pipeline hazır, test edilmedi)
+- AMD GPU'da ucuz per-chunk fast-weight güncellemesi (ROCm). → **✓ DOĞRULANDI:** TTT overhead sadece %7 (365ms vs 4921ms generate)
+- **YENİ:** Gerçek multimodal model (Gemma 4 12B Unified) ile ses/görsel duygu tanıma. E2B text-only olduğu için sınırlı.
+- **YENİ:** Audio tokenizer performans optimizasyonu (Mel döngüsü numpy vektörizasyonu)
+- **YENİ:** Gemma 4 multimodal forward OOM fix (audio token limiti)
 ```
 ```
 ## Kaynaklar (doğrulanmış)

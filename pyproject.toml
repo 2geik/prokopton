@@ -1,6 +1,6 @@
 [project]
 name = "prokopton"
-version = "0.2.0"
+version = "0.3.1"
 description = "Continual-learning, non-forgetting, multimodal LLM — runs on ROCm, CUDA, MPS, MLX, CPU"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"

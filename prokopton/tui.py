@@ -201,6 +201,104 @@ class ModelInfoBar(Widget):
         return text
 
 
+class MonitoringPanel(Widget):
+    """Canlı izleme paneli — per-layer ΔW, loss geçmişi, VRAM, bellek durumu."""
+
+    layer_deltas: reactive[list] = reactive([])
+    loss_history: reactive[list] = reactive([])
+    vram_used: reactive[float] = reactive(0.0)
+    vram_total: reactive[float] = reactive(0.0)
+    memory_state: reactive[dict] = reactive({})
+
+    def render(self) -> RenderableType:
+        from rich.columns import Columns
+
+        panels = []
+
+        # ── Per-Layer ΔW ──
+        if self.layer_deltas:
+            dw_table = Table(show_header=True, box=None, padding=(0, 1),
+                             header_style="bold cyan")
+            dw_table.add_column("Layer", style="dim", width=8)
+            dw_table.add_column("ΔW Norm", justify="right", style="yellow")
+            dw_table.add_column("Updates", justify="right", style="dim")
+            dw_table.add_column("Surprise", justify="right", style="magenta")
+            for i, ld in enumerate(self.layer_deltas):
+                dw_table.add_row(
+                    f"L{i}",
+                    f"{ld.get('delta', 0):.4f}",
+                    str(ld.get('updates', 0)),
+                    f"{ld.get('surprise', 0):.2f}",
+                )
+            panels.append(Panel(dw_table, title="⚡ TTT Katman ΔW",
+                                border_style="yellow"))
+        else:
+            panels.append(Panel("Henüz TTT verisi yok.", title="⚡ TTT Katman ΔW",
+                                border_style="yellow"))
+
+        # ── Loss / Surprise History ──
+        if self.loss_history:
+            loss_table = Table(show_header=True, box=None, padding=(0, 1),
+                               header_style="bold cyan")
+            loss_table.add_column("Step", style="dim", width=6)
+            loss_table.add_column("Loss", justify="right", style="red")
+            loss_table.add_column("Surprise", justify="right", style="magenta")
+            for entry in self.loss_history[-20:]:
+                loss_table.add_row(
+                    str(entry.get("step", "")),
+                    f"{entry.get('loss', 0):.4f}",
+                    f"{entry.get('surprise', 0):.4f}",
+                )
+            panels.append(Panel(loss_table, title="📉 Son 20 Adım (Loss/Sürpriz)",
+                                border_style="red"))
+        else:
+            panels.append(Panel("Henüz öğrenme adımı yok.", title="📉 Loss Geçmişi",
+                                border_style="red"))
+
+        # ── VRAM ──
+        vram_pct = 0
+        if self.vram_total > 0:
+            vram_pct = (self.vram_used / self.vram_total) * 100
+        vram_text = Text()
+        vram_text.append(f"Kullanılan: ", style="dim")
+        vram_text.append(f"{self.vram_used:.2f} GB", style="bold yellow")
+        if self.vram_total > 0:
+            vram_text.append(f" / {self.vram_total:.1f} GB", style="dim")
+            bar_len = 20
+            filled = int(vram_pct / 100 * bar_len)
+            bar = "█" * filled + "░" * (bar_len - filled)
+            vram_text.append(f"\n[{bar}] {vram_pct:.0f}%",
+                             style="yellow" if vram_pct < 80 else "red")
+        else:
+            vram_text.append("\n(CPU modu — VRAM yok)", style="dim")
+        panels.append(Panel(vram_text, title="💾 VRAM Kullanımı",
+                            border_style="green"))
+
+        # ── Bellek Durumu ──
+        mem_text = Text()
+        mem_saved = self.memory_state.get("saved", False)
+        mem_steps = self.memory_state.get("steps", 0)
+        mem_updates = self.memory_state.get("updates", 0)
+        mem_buffer = self.memory_state.get("buffer_size", 0)
+        mem_history = self.memory_state.get("history_len", 0)
+
+        mem_text.append(f"Kayıtlı: ", style="dim")
+        mem_text.append("✅ Evet" if mem_saved else "❌ Hayır",
+                         style="bold green" if mem_saved else "bold red")
+        mem_text.append(f"\nAdım: ", style="dim")
+        mem_text.append(str(mem_steps), style="bold cyan")
+        mem_text.append(f"\nTTT Güncelleme: ", style="dim")
+        mem_text.append(str(mem_updates), style="bold yellow")
+        mem_text.append(f"\nBuffer: ", style="dim")
+        mem_text.append(f"{mem_buffer} öğe", style="white")
+        mem_text.append(f"\nSohbet Geçmişi: ", style="dim")
+        mem_text.append(f"{mem_history} mesaj", style="white")
+        panels.append(Panel(mem_text, title="🧠 Bellek Durumu",
+                            border_style="blue"))
+
+        return Columns(panels)
+
+
 # ============================================================
 # SCREENS
 # ============================================================
@@ -357,6 +455,10 @@ class ProkoptonTUI(App):
         height: 1fr;
         border: solid $surface;
     }
+    #monitoring_panel {
+        height: 1fr;
+        border: solid $surface;
+    }
     #input_area {
         height: auto;
         padding: 1;
@@ -409,6 +511,7 @@ class ProkoptonTUI(App):
             ttt_lr=lr,
             ttt_n_layers=n_layers,
         )
+        self.loss_history: list = []  # son N adımın loss/surprise kaydı
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -441,6 +544,7 @@ class ProkoptonTUI(App):
                 Button("♻ Sıfırla", variant="warning", id="btn_reset"),
                 Button("💾 Değişmiş Modeli Kaydet", variant="primary", id="btn_save_model"),
             )),
+            TabPane("📈 Monitoring", MonitoringPanel(id="monitoring_panel")),
         )
         yield Footer()
 
@@ -463,6 +567,9 @@ class ProkoptonTUI(App):
             self._load_model(self._model_arg)
         else:
             self.set_timer(0.5, self._prompt_model_select)
+
+        # Monitoring panel auto-refresh (2 saniyede bir)
+        self.set_interval(2.0, self._update_monitoring)
 
     def _prompt_model_select(self):
         self.push_screen(ModelSelectScreen(), self._on_model_selected)
@@ -568,8 +675,26 @@ class ProkoptonTUI(App):
             return
 
         try:
-            response = self.prokopton.chat(user_text, max_new=256)
-            self._log_chat(f"🤖 [bold cyan]Prokopton:[/] {response}")
+            # learn + generate (loss yakalamak için ayrı ayrı)
+            self.prokopton.conversation_history.append(f"User: {user_text}")
+            context = "\n".join(self.prokopton.conversation_history[-6:])
+            prompt = f"{context}\nAssistant:"
+
+            learn_info = self.prokopton.learn(user_text)
+            response = self.prokopton.generate(prompt, max_new=256)
+            assistant_part = response.split("Assistant:")[-1].strip()
+            self.prokopton.conversation_history.append(f"Assistant: {assistant_part}")
+
+            # Track loss
+            self.loss_history.append({
+                "step": learn_info.get("step", 0),
+                "loss": learn_info.get("loss", 0),
+                "surprise": learn_info.get("surprise", 0),
+            })
+            if len(self.loss_history) > 100:
+                self.loss_history = self.loss_history[-100:]
+
+            self._log_chat(f"🤖 [bold cyan]Prokopton:[/] {assistant_part}")
             self._update_stats()
         except Exception as e:
             self._log_chat(f"❌ Hata: {e}", "red")
@@ -648,6 +773,49 @@ class ProkoptonTUI(App):
             stats = self.prokopton.stats
             panel = self.query_one("#stats_panel", StatsPanel)
             panel.stats = stats
+
+    def _update_monitoring(self):
+        """Canlı izleme panelini güncelle: per-layer ΔW, loss geçmişi, VRAM, bellek."""
+        try:
+            panel = self.query_one("#monitoring_panel", MonitoringPanel)
+        except Exception:
+            return  # widget henüz mount edilmemiş olabilir
+
+        if self.prokopton and self.backend:
+            # Per-layer TTT deltas
+            layer_deltas = []
+            for i, fw in enumerate(self.prokopton.fast_weights):
+                layer_deltas.append({
+                    "delta": fw.weight_change,
+                    "updates": fw.update_count,
+                    "surprise": fw.total_surprise,
+                })
+            panel.layer_deltas = layer_deltas
+
+            # Loss history
+            panel.loss_history = self.loss_history
+
+            # VRAM
+            current_vram = get_vram_usage(self.backend)
+            panel.vram_used = current_vram
+            panel.vram_total = getattr(self.backend, "vram_gb", 0) or 0
+
+            # Memory state
+            mem_saved = bool(self.prokopton.memory) and "metadata.json" in str(self.prokopton.memory)
+            panel.memory_state = {
+                "saved": mem_saved,
+                "steps": self.prokopton.step_counter,
+                "updates": sum(fw.update_count for fw in self.prokopton.fast_weights),
+                "buffer_size": len(self.prokopton.replay_buffer),
+                "history_len": len(self.prokopton.conversation_history),
+            }
+        else:
+            # Prokopton yoksa boş göster
+            panel.layer_deltas = []
+            panel.loss_history = []
+            panel.vram_used = 0
+            panel.vram_total = 0
+            panel.memory_state = {}
 
 
 # ============================================================
