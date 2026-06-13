@@ -1,8 +1,8 @@
 """
-Prokopton — Konuştukça Öğrenen, Unutmayan LLM Framework
+Prokopton — Self-Improving, Never-Forgetting LLM Framework
 
-Tam entegre: In-Place TTT + CMS + PER + Multimodal + KALICI BELLEK.
-Öğrenilen bilgi CMS adaptörleri olarak diske kaydedilir, yeniden başlatınca yüklenir.
+Fully integrated: In-Place TTT + CMS + PER + Multimodal + PERSISTENT MEMORY.
+Learned knowledge saved as CMS adapters to disk, reloaded on restart.
 """
 import torch, torch.nn as nn, math, json, datetime
 from collections import deque
@@ -13,7 +13,7 @@ from typing import Optional, List, Dict, Any
 
 @dataclass
 class ProkoptonConfig:
-    """Framework konfigürasyonu."""
+    """Framework configuration."""
     # TTT
     ttt_lr: float = 1e-3
     ttt_momentum: float = 0.9
@@ -38,7 +38,7 @@ class ProkoptonConfig:
 
 
 class FastWeight:
-    """Tek bir MLP katmanının test-time güncellenen ağırlığı."""
+    """Single MLP layer's test-time updatable weight."""
     def __init__(self, layer: nn.Linear, lr: float = 1e-3, momentum: float = 0.9):
         self.layer = layer
         self.lr = lr
@@ -57,7 +57,7 @@ class FastWeight:
 
     @property
     def delta(self) -> torch.Tensor:
-        """Mevcut ağırlık - orijinal ağırlık."""
+        """Current weight minus original weight."""
         return self.layer.weight - self.original_W
 
     @property
@@ -66,7 +66,7 @@ class FastWeight:
 
 
 class CMSAdapter:
-    """Fast-weight değişimini düşük-rank matrise damıtan adaptör."""
+    """Distills fast-weight delta into low-rank matrices via SVD."""
     def __init__(self, fast_weight: FastWeight, rank: int = 16, alpha: float = 32.0):
         self.fast = fast_weight
         device = fast_weight.layer.weight.device
@@ -79,7 +79,7 @@ class CMSAdapter:
         self.alpha = alpha
 
     def consolidate(self):
-        """Fast-weight deltasını SVD ile A@B'ye damıt."""
+        """SVD-distill fast-weight delta into A@B."""
         delta = self.fast.delta.float()
         with torch.no_grad():
             U, S, V = torch.svd_lowrank(delta, q=self.rank)
@@ -87,11 +87,11 @@ class CMSAdapter:
             self.A.data.copy_(V.T.to(self.A.dtype))
 
     def expand(self) -> torch.Tensor:
-        """A@B'yi tam delta matrisine genişlet."""
+        """Expand A@B to full delta matrix."""
         return (self.B @ self.A) * (self.alpha / self.rank)
 
     def apply_to_model(self):
-        """CMS adaptörünü base model ağırlıklarına geri uygula."""
+        """Apply CMS adapter delta back to base model weights."""
         delta = self.expand()
         with torch.no_grad():
             self.fast.original_W.add_(delta.to(self.fast.original_W.dtype))
@@ -107,7 +107,7 @@ class CMSAdapter:
 
 
 class SurpriseBuffer:
-    """Sürpriz-öncelikli replay buffer (PER)."""
+    """Surprise-prioritized replay buffer (PER)."""
     def __init__(self, capacity: int = 128):
         self.items: deque = deque(maxlen=capacity)
         self.surprises: deque = deque(maxlen=capacity)
@@ -227,17 +227,17 @@ class AudioTokenizer(nn.Module):
 
 class Prokopton:
     """
-    Prokopton: Konuştukça öğrenen, unutmayan LLM framework'ü.
+    Prokopton: Self-improving, never-forgetting LLM framework.
 
-    Kullanım:
+    Usage:
         prok = Prokopton(model, tokenizer)
-        prok.learn("Zephyria'nın başkenti Aethel'dir.")
-        prok.save()  # öğrenileni diske kaydet
+        prok.learn("Zephyria's capital is Aethel.")
+        prok.save()  # persist to disk
 
-        # Yeni oturum
+        # New session
         prok2 = Prokopton(model2, tokenizer2)
-        prok2.load()  # önceki bilgileri geri yükle
-        cevap = prok2.chat("Zephyria'nın başkenti neresi?")  # "Aethel"
+        prok2.load()  # restore previous knowledge
+        answer = prok2.chat("What is the capital of Zephyria?")  # "Aethel"
     """
 
     def __init__(self, model, tokenizer, config: ProkoptonConfig = None):
@@ -280,7 +280,7 @@ class Prokopton:
     def _setup_multimodal(self):
         try:
             output_dim = self.model.config.hidden_size
-        except:
+        except (AttributeError, KeyError):
             output_dim = 2560
         self.vision_tokenizer = VisualTokenizer(
             self.config.vision_patch_size, self.config.vision_embed_dim, output_dim)
@@ -289,11 +289,11 @@ class Prokopton:
             self.config.audio_patch_frames, self.config.vision_embed_dim, output_dim)
 
     # ============================================================
-    # ÖĞRENME
+    # LEARNING
     # ============================================================
 
     def learn(self, text: str) -> Dict[str, Any]:
-        """Bir metin parçasından öğren. TTT fast-weight'leri günceller."""
+        """Learn from a text chunk. Updates TTT fast-weights."""
         tokens = self.tokenizer(text, return_tensors="pt", truncation=True, max_length=256)
         tokens = {k: v.to(self.model.device) for k, v in tokens.items()}
 
@@ -338,11 +338,11 @@ class Prokopton:
         return {"loss": loss.item(), "surprise": surprise, "step": self.step_counter}
 
     # ============================================================
-    # ÜRETİM
+    # GENERATION
     # ============================================================
 
     def generate(self, prompt: str, max_new: int = 128) -> str:
-        """Metin üret (öğrenme yok)."""
+        """Generate text (no learning)."""
         inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512)
         inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
         with torch.no_grad():
@@ -352,7 +352,7 @@ class Prokopton:
         return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
     def chat(self, user_input: str, max_new: int = 128) -> str:
-        """Sohbet: önce öğren, sonra cevap ver."""
+        """Chat: learn first, then respond."""
         self.conversation_history.append(f"User: {user_input}")
         context = "\n".join(self.conversation_history[-6:])
         prompt = f"{context}\nAssistant:"
@@ -364,18 +364,18 @@ class Prokopton:
         return assistant_part
 
     # ============================================================
-    # KALICI BELLEK — save / load
+    # PERSISTENT MEMORY — save / load
     # ============================================================
 
     def save(self, path: str = None, silent: bool = False):
         """
-        Öğrenilen tüm bilgiyi diske kaydet.
-        CMS adaptörleri + metadata + konfigürasyon.
+        Save all learned knowledge to disk.
+        CMS adapters + metadata + configuration.
         """
         save_dir = Path(path or self.config.save_dir)
         save_dir.mkdir(parents=True, exist_ok=True)
 
-        # Her CMS adaptörünü kaydet
+        # Save each CMS adapter
         cms_data = {}
         for i, cms in enumerate(self.cms_adapters):
             sd = cms.state_dict()
@@ -388,7 +388,7 @@ class Prokopton:
                 "weight_change": cms.fast.weight_change,
             }
 
-        # Fast-weight deltalarını da kaydet (tam geri yükleme için)
+        # Also save fast-weight deltas (for full restore)
         fw_data = {}
         for i, fw in enumerate(self.fast_weights):
             delta_path = save_dir / f"delta_{i}.pt"
@@ -419,8 +419,8 @@ class Prokopton:
 
     def load(self, path: str = None, silent_on_missing: bool = False):
         """
-        Daha önce kaydedilmiş bilgiyi geri yükle.
-        CMS adaptörlerini yükler ve base modele uygular.
+        Load previously saved knowledge.
+        Loads CMS adapters and applies to base model.
         """
         save_dir = Path(path or self.config.save_dir)
         if not save_dir.exists():
@@ -436,7 +436,7 @@ class Prokopton:
         with open(meta_path) as f:
             metadata = json.load(f)
 
-        # CMS adaptörlerini yükle
+        # Load CMS adapters
         loaded = 0
         for i in range(len(self.cms_adapters)):
             cms_path = save_dir / f"cms_{i}.pt"
@@ -446,7 +446,7 @@ class Prokopton:
                 self.cms_adapters[i].apply_to_model()
                 loaded += 1
 
-        # Fast-weight deltalarını yükle (opsiyonel, CMS yoksa)
+        # Load fast-weight deltas (fallback, if no CMS)
         if loaded == 0:
             for i in range(len(self.fast_weights)):
                 delta_path = save_dir / f"delta_{i}.pt"
@@ -457,7 +457,7 @@ class Prokopton:
                         self.fast_weights[i].original_W = self.fast_weights[i].layer.weight.clone()
                     loaded += 1
 
-        # Metadata'yı geri yükle
+        # Restore metadata
         self.step_counter = metadata.get("steps", 0)
         self.memory = metadata
 
@@ -467,11 +467,11 @@ class Prokopton:
         return True
 
     # ============================================================
-    # YARDIMCI
+    # UTILITY
     # ============================================================
 
     def reset(self):
-        """Tüm öğrenilmiş bilgiyi sıfırla (RAM'deki)."""
+        """Reset all learned knowledge (RAM only)."""
         for fw in self.fast_weights:
             fw.reset()
         self.replay_buffer = SurpriseBuffer(self.config.per_capacity)
