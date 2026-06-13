@@ -1,142 +1,142 @@
 # Prokopton 🧠
 
-> *Prokopton* (προκόπτων): bilgeliğe doğru sürekli ilerleyen kişi.
+> *Prokopton* (προκόπτων): one who continually advances toward wisdom.
 
-**Konuştukça ağırlıkları gerçekten güncellenen**, deneyim biriktikçe **büyüyen** ve
-**eskiyi unutmayan** bir LLM. RAG/agent-memory değil — parametreler çıkarım sırasında
-değişir.
+A **self-improving LLM** whose weights actually update during conversation —
+learning from experience, **growing** over time, and **never forgetting**.
+Not RAG or agent-memory — the parameters themselves change at inference time.
 
-- 🔄 **In-Place TTT**: Her konuşmada MLP ağırlıkları güncellenir
-- 💾 **Kalıcı Bellek**: CMS adaptörleri diske kaydedilir, yeniden başlatınca yüklenir
-- 🎯 **Unutmama**: Forgetting ≈ 0, anchor korunur
-- 🖼️🎵 **Multimodal**: Görsel + doğrudan ses (STT'siz)
-- 🎮 **TUI Arayüz**: Terminal üzerinden kullanıcı dostu arayüz
-- ⬇️ **HF'den Model İndirme**: HuggingFace URL'si ile tek tuşta model indir
+- 🔄 **In-Place TTT**: MLP weights updated on every conversation turn
+- 💾 **Persistent Memory**: CMS adapters saved to disk, reloaded on restart
+- 🎯 **No Forgetting**: Forgetting ≈ 0, anchor knowledge preserved
+- 🖼️🎵 **Multimodal**: Vision + direct audio (no STT pipeline)
+- 🎮 **TUI Interface**: User-friendly terminal app with Textual
+- ⬇️ **HF Model Downloader**: One-click download from any HuggingFace URL
 
-## 🚀 Hızlı Başlangıç
+## 🚀 Quick Start
 
-### 1. Kurulum
+### 1. Install
 
 ```bash
-git clone https://github.com/kullaniciadi/prokopton.git
+git clone https://github.com/2geik/prokopton.git
 cd prokopton
 
-# Sanal ortam oluştur
+# Create virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
 
-# ROCm (AMD GPU) için PyTorch
+# PyTorch for ROCm (AMD GPU)
 pip install torch --index-url https://download.pytorch.org/whl/rocm7.0
 
-# Prokopton'u kur
+# Install Prokopton
 pip install -e .
 ```
 
-### 2. TUI'yi Başlat
+> **NVIDIA GPU?** Skip the `--index-url` line — `pip install -e .` pulls stock PyTorch.
+
+### 2. Launch the TUI
 
 ```bash
 prokopton
-# veya
+# or
 python -m prokopton.tui
 ```
 
-Açılan ekranda:
-1. Model seçin (HF ID yazın veya listeden seçin)
-2. Sohbet etmeye başlayın!
-3. `Ctrl+S` ile belleği kaydedin, `Ctrl+L` ile geri yükleyin
+In the TUI:
+1. Select a model (type an HF ID or pick from the list)
+2. Start chatting — it learns from every message
+3. `Ctrl+S` to save memory, `Ctrl+L` to load it back later
 
-### 3. Model Yükleme
+### 3. Model Setup
 
-İki yöntem:
+**Option A — Auto-download in the TUI:**
+`Ctrl+D` → paste any HF URL or model ID → done
 
-**A) Otomatik — TUI içinden:**
-- `Ctrl+D` → HF URL veya model ID girin → İndir
-
-**B) Manuel — `models/` klasörüne:**
+**Option B — Manual `models/` folder:**
 ```bash
-# HuggingFace'den manuel indir
 huggingface-cli download google/gemma-4-E2B --local-dir models/gemma-4-E2B
-
-# Veya herhangi bir modeli models/ altına koyun
-# Sonra TUI'de otomatik görünecektir
+# Any valid HF model folder placed in models/ will appear in the TUI
 ```
 
-## 📋 TUI Kısayolları
+## 📋 TUI Shortcuts
 
-| Kısayol | İşlem |
-|---------|-------|
-| `Ctrl+Q` | Çıkış |
-| `Ctrl+S` | Belleği kaydet |
-| `Ctrl+L` | Belleği yükle |
-| `Ctrl+R` | Belleği sıfırla |
-| `Ctrl+M` | Model değiştir |
-| `Ctrl+D` | HF'den model indir |
-| `Ctrl+P` | İstatistikleri göster |
-| `Enter` | Mesaj gönder |
+| Key | Action |
+|-----|--------|
+| `Ctrl+Q` | Quit |
+| `Ctrl+S` | Save memory to disk |
+| `Ctrl+L` | Load memory from disk |
+| `Ctrl+R` | Reset all learned knowledge |
+| `Ctrl+M` | Switch model |
+| `Ctrl+D` | Download model from HuggingFace |
+| `Ctrl+P` | View statistics |
+| `Enter` | Send message |
 
 ## 🧪 Python API
 
 ```python
-from prokopton import Prokopton, ProkoptonConfig
+from prokopton import Prokopton
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-# Model yükle
+# Load model
 model = AutoModelForCausalLM.from_pretrained(
     "google/gemma-4-E2B", torch_dtype=torch.bfloat16, device_map="auto")
 tokenizer = AutoTokenizer.from_pretrained("google/gemma-4-E2B")
 tokenizer.pad_token = tokenizer.eos_token
 
-# Prokopton framework
+# Wrap with Prokopton — enables live learning
 prok = Prokopton(model, tokenizer)
 
-# Konuştukça öğren
-prok.learn("Zephyria'nın başkenti Aethel'dir.")
-prok.save("my_memory")  # Diske kaydet
+# Learn from conversation
+prok.learn("Zephyria's capital is Aethel.")
+prok.save("my_memory")  # persist to disk
 
-# Yeni oturum — belleği geri yükle
+# New session — reload what was learned
 prok.load("my_memory")
-cevap = prok.chat("Zephyria'nın başkenti neresi?")
-print(cevap)  # "Aethel"
+answer = prok.chat("What is the capital of Zephyria?")
+print(answer)  # "Aethel"
 ```
 
-## 📦 Desteklenen Modeller
+## 📦 Supported Models
 
-| Model | Parametre | VRAM (bf16) | Durum |
-|-------|-----------|-------------|-------|
-| `google/gemma-4-E2B` | 5.1B | ~9.5 GB | ✅ Önerilen |
-| `google/gemma-4-E4B` | 7.9B | ~14.2 GB | ⚠️ 16 GB'ta sınırda |
-| `google/gemma-4-12B` | 12B | 24+ GB | 🔮 Quantization gerekli |
+| Model | Params | VRAM (bf16) | Notes |
+|-------|--------|-------------|-------|
+| `google/gemma-4-E2B` | 5.1B | ~9.5 GB | ✅ Recommended |
+| `google/gemma-4-E4B` | 7.9B | ~14.2 GB | ⚠️ Tight on 16 GB |
+| `google/gemma-4-12B` | 12B | 24+ GB | 🔮 Needs quantization |
 
-## 🖥️ Donanım Gereksinimleri
+> **Other models?** Prokopton works with any HuggingFace `AutoModelForCausalLM` model.
+> It auto-detects MLP projection layers for TTT.
 
-- **Önerilen:** AMD Radeon RX 6800+ (16 GB VRAM), ROCm 7.0+
-- **Minimum:** ROCm uyumlu herhangi AMD GPU
-- **CPU:** Deneysel (yavaş ama çalışır)
-- **RAM:** 32 GB önerilir
+## 🖥️ Hardware
 
-## 📊 Durum
+- **Recommended:** AMD Radeon RX 6800+ (16 GB VRAM), ROCm 7.0+
+- **Minimum:** Any ROCm-compatible AMD GPU
+- **CPU fallback:** Works but slow
+- **RAM:** 32 GB recommended
 
-| Aşama | | Sonuç |
+## 📊 Status
+
+| Stage | | Result |
 |---|---|---|
-| M0 | Ortam | ROCm 7.2.4 + PyTorch 2.12.0 ✅ |
-| M1(a) | Titans recall | Hafıza penceresi ötesi bilgi ✅ |
-| M1(b) | In-Place TTT | Kayıp %45 düştü ✅ |
-| M2 | ROCm profil | 19ms/chunk, 6k tok/s ✅ |
-| M3+ | Gemma 4 + Yoğun TTT | %60→%90 accuracy ✅ |
-| M4 | Görsel tokenizer | Tuna-2 2D-RoPE ✅ |
-| M5 | Ses tokenizer | Mel-LLM, STT'siz ✅ |
-| M6 | Değerlendirme | Forgetting≈0, anchor korundu ✅ |
-| M7 | Multimodal | Pipeline entegre ✅ |
+| M0 | Environment | ROCm 7.2.4 + PyTorch 2.12.0 ✅ |
+| M1(a) | Titans recall | Memory beyond attention window ✅ |
+| M1(b) | In-Place TTT | Loss dropped 45% ✅ |
+| M2 | ROCm profile | 19ms/chunk, 6k tok/s ✅ |
+| M3+ | Gemma 4 + Intensive TTT | 60% → 90% accuracy ✅ |
+| M4 | Visual tokenizer | Tuna-2 2D-RoPE ✅ |
+| M5 | Audio tokenizer | Mel-LLM, no STT ✅ |
+| M6 | Evaluation | Forgetting≈0, anchor preserved ✅ |
+| M7 | Multimodal | Pipeline integrated ✅ |
 
-## 📚 Bilimsel Temel
+## 📚 Research Foundations
 
 - **Nested Learning / Hope** — arXiv 2512.24695 (NeurIPS 2025)
 - **Titans** — arXiv 2501.00663
 - **In-Place TTT** — arXiv 2604.06169
 - **SDFT** — arXiv 2601.19897
-- **Tuna-2** (encoder-free görsel) — arXiv 2604.24763
-- **Mel-LLM** (encoder-free ses) — arXiv 2606.10231
+- **Tuna-2** (encoder-free vision) — arXiv 2604.24763
+- **Mel-LLM** (encoder-free audio) — arXiv 2606.10231
 
-## 📄 Lisans
+## 📄 License
 
-MIT License — detaylar için [LICENSE](LICENSE)
+MIT — see [LICENSE](LICENSE)
