@@ -39,3 +39,4 @@ Thumbs.db
 *.swo
 *~
 trained_tokenizers/
+prokopton_trained/
