@@ -6,75 +6,136 @@ A **self-improving LLM** whose weights actually update during conversation —
 learning from experience, **growing** over time, and **never forgetting**.
 Not RAG or agent-memory — the parameters themselves change at inference time.
 
-- 🔄 **In-Place TTT**: MLP weights updated on every conversation turn
-- 💾 **Persistent Memory**: CMS adapters saved to disk, reloaded on restart
-- 🎯 **No Forgetting**: Forgetting ≈ 0, anchor knowledge preserved
-- 🖼️🎵 **Multimodal**: Vision + direct audio (no STT pipeline)
-- 🎮 **TUI Interface**: User-friendly terminal app with Textual
-- ⬇️ **HF Model Downloader**: One-click download from any HuggingFace URL
+🔗 **Repo:** [github.com/2geik/prokopton](https://github.com/2geik/prokopton)
+
+---
+
+## ✨ Features
+
+- 🔄 **In-Place TTT** — MLP weights update on every conversation turn
+- 💾 **Persistent Memory** — CMS adapters saved to disk, reloaded on restart
+- 🎯 **Zero Forgetting** — Forgetting ≈ 0, anchor knowledge preserved
+- 🖼️🎵 **Multimodal** — Vision + direct audio (no STT pipeline)
+- 🎮 **TUI Interface** — User-friendly terminal app (Textual)
+- ⬇️ **HF Model Downloader** — One-click from any HuggingFace URL
+- 🏃 **Headless Mode** — `--model` flag skips UI, loads directly
+- ⚙️ **Configurable** — lr, layers, rank all tunable via CLI or in-app
+
+---
 
 ## 🚀 Quick Start
 
-### 1. Install
+### Install
 
 ```bash
 git clone https://github.com/2geik/prokopton.git
 cd prokopton
 
-# Create virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
 
-# PyTorch for ROCm (AMD GPU)
+# AMD GPU (ROCm)
 pip install torch --index-url https://download.pytorch.org/whl/rocm7.0
-
-# Install Prokopton
 pip install -e .
+
+# NVIDIA GPU: skip the --index-url line
 ```
 
-> **NVIDIA GPU?** Skip the `--index-url` line — `pip install -e .` pulls stock PyTorch.
-
-### 2. Launch the TUI
+### Launch
 
 ```bash
+prokopton                # Interactive TUI, pick a model
+prokopton --help         # Show all options
+```
+
+---
+
+## 📖 Usage
+
+### CLI Reference
+
+```
+prokopton [OPTIONS]
+
+Options:
+  -m, --model MODEL     Model name or path (skip selection screen)
+  --lr LR               TTT learning rate (default: 0.001)
+  --n-layers N          Number of TTT layers (default: 5)
+  --no-ttt              Frozen model mode (no learning)
+  --cpu                 Force CPU (no GPU)
+  --save-dir DIR        Memory directory (default: prokopton_memory)
+  -h, --help            Show this help
+```
+
+### Common Patterns
+
+```bash
+# Interactive — pick model in the UI
 prokopton
-# or
-python -m prokopton.tui
+
+# Skip selection, load directly
+prokopton --model google/gemma-4-E2B
+
+# Load a local model from models/ folder
+prokopton --model models/gemma-4-E2B
+
+# Frozen mode (chat only, no learning)
+prokopton --model google/gemma-4-E2B --no-ttt
+
+# Custom learning rate and layer count
+prokopton --model google/gemma-4-E2B --lr 0.0005 --n-layers 3
+
+# CPU-only (no GPU required)
+prokopton --model google/gemma-4-E2B --cpu
+
+# Different memory directory per project
+prokopton --save-dir project_memory
 ```
 
-In the TUI:
-1. Select a model (type an HF ID or pick from the list)
-2. Start chatting — it learns from every message
-3. `Ctrl+S` to save memory, `Ctrl+L` to load it back later
-
-### 3. Model Setup
-
-**Option A — Auto-download in the TUI:**
-`Ctrl+D` → paste any HF URL or model ID → done
-
-**Option B — Manual `models/` folder:**
-```bash
-huggingface-cli download google/gemma-4-E2B --local-dir models/gemma-4-E2B
-# Any valid HF model folder placed in models/ will appear in the TUI
-```
-
-## 📋 TUI Shortcuts
+### Inside the TUI
 
 | Key | Action |
 |-----|--------|
-| `Ctrl+Q` | Quit |
+| `Ctrl+Q` | Quit (auto-saves memory) |
 | `Ctrl+S` | Save memory to disk |
 | `Ctrl+L` | Load memory from disk |
 | `Ctrl+R` | Reset all learned knowledge |
 | `Ctrl+M` | Switch model |
 | `Ctrl+D` | Download model from HuggingFace |
-| `Ctrl+P` | View statistics |
+| `Ctrl+P` | View statistics tab |
 | `Enter` | Send message |
+
+**Tabs:**
+- 💬 **Chat** — main conversation, every message triggers learning
+- 📊 **Stats** — steps, weight delta, buffer size, live updates
+- ⚙️ **Settings** — tune lr, layers, CMS rank; save/load/reset buttons
+
+### Getting a Model
+
+**Option A — In the TUI:**
+`Ctrl+D` → paste a HuggingFace URL or model ID → downloads to `models/`
+
+**Option B — Manual:**
+```bash
+huggingface-cli download google/gemma-4-E2B --local-dir models/gemma-4-E2B
+```
+Any valid HF model folder in `models/` appears in the TUI selector.
+
+### Memory Workflow
+
+```
+Session 1:  chat → learn → Ctrl+S (save)
+Session 2:  launch → Ctrl+L (load) → continue where you left off
+```
+
+Memory is stored as low-rank CMS adapters in `prokopton_memory/`.
+
+---
 
 ## 🧪 Python API
 
 ```python
-from prokopton import Prokopton
+from prokopton import Prokopton, ProkoptonConfig
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 # Load model
@@ -83,18 +144,40 @@ model = AutoModelForCausalLM.from_pretrained(
 tokenizer = AutoTokenizer.from_pretrained("google/gemma-4-E2B")
 tokenizer.pad_token = tokenizer.eos_token
 
-# Wrap with Prokopton — enables live learning
-prok = Prokopton(model, tokenizer)
+# Wrap with Prokopton
+config = ProkoptonConfig(ttt_n_layers=5, ttt_lr=1e-3)
+prok = Prokopton(model, tokenizer, config)
 
 # Learn from conversation
 prok.learn("Zephyria's capital is Aethel.")
-prok.save("my_memory")  # persist to disk
+prok.save("my_memory")
 
-# New session — reload what was learned
+# New session — reload
 prok.load("my_memory")
 answer = prok.chat("What is the capital of Zephyria?")
-print(answer)  # "Aethel"
+print(answer)  # → "Aethel"
+
+# Stats
+print(prok.stats)  # → steps, updates, weight_change, buffer_size
 ```
+
+### Export the Trained Model
+
+```python
+# Embed CMS adapters into base weights
+for cms in prok.cms_adapters:
+    cms.consolidate()
+    cms.apply_to_model()
+
+# Save as standard HuggingFace model
+model.save_pretrained("prokopton_model")
+tokenizer.save_pretrained("prokopton_model")
+
+# Now loadable without Prokopton:
+model2 = AutoModelForCausalLM.from_pretrained("prokopton_model")
+```
+
+---
 
 ## 📦 Supported Models
 
@@ -104,17 +187,20 @@ print(answer)  # "Aethel"
 | `google/gemma-4-E4B` | 7.9B | ~14.2 GB | ⚠️ Tight on 16 GB |
 | `google/gemma-4-12B` | 12B | 24+ GB | 🔮 Needs quantization |
 
-> **Other models?** Prokopton works with any HuggingFace `AutoModelForCausalLM` model.
-> It auto-detects MLP projection layers for TTT.
+Prokopton works with any `AutoModelForCausalLM` model — it auto-detects MLP layers for TTT.
+
+---
 
 ## 🖥️ Hardware
 
 - **Recommended:** AMD Radeon RX 6800+ (16 GB VRAM), ROCm 7.0+
 - **Minimum:** Any ROCm-compatible AMD GPU
-- **CPU fallback:** Works but slow
+- **CPU fallback:** Works (`--cpu` flag) but slow
 - **RAM:** 32 GB recommended
 
-## 📊 Status
+---
+
+## 📊 Research Status
 
 | Stage | | Result |
 |---|---|---|
@@ -128,7 +214,17 @@ print(answer)  # "Aethel"
 | M6 | Evaluation | Forgetting≈0, anchor preserved ✅ |
 | M7 | Multimodal | Pipeline integrated ✅ |
 
-## 📚 Research Foundations
+### Performance (Gemma 4 E2B, RX 6800)
+
+| Operation | Time |
+|-----------|------|
+| `generate()` | 4921 ms |
+| `learn()` | 365 ms (7% overhead) |
+| `learn()` + `generate()` | 5169 ms |
+
+---
+
+## 📚 Foundations
 
 - **Nested Learning / Hope** — arXiv 2512.24695 (NeurIPS 2025)
 - **Titans** — arXiv 2501.00663
@@ -136,6 +232,8 @@ print(answer)  # "Aethel"
 - **SDFT** — arXiv 2601.19897
 - **Tuna-2** (encoder-free vision) — arXiv 2604.24763
 - **Mel-LLM** (encoder-free audio) — arXiv 2606.10231
+
+---
 
 ## 📄 License
 
