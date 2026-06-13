@@ -14,10 +14,12 @@ dependencies = [
     "safetensors",
     "textual>=1.0.0",
     "huggingface-hub>=0.20.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
 mlx = ["mlx>=0.10.0", "mlx-lm>=0.10.0"]
+test = ["pytest>=7.0", "pytest-cov>=4.0"]
 
 [project.scripts]
 prokopton = "prokopton.tui:main"
@@ -30,3 +32,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["prokopton"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"

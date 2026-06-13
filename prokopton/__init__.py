@@ -23,7 +23,10 @@ from prokopton.backends import (
     get_vram_usage,
     backend_summary,
     BackendInfo,
+    generate_text,
+    mlx_generate,
 )
+from prokopton.config import ProkoptonCLIConfig, load_config, save_config
 
 __all__ = [
     # Core
@@ -47,4 +50,10 @@ __all__ = [
     "get_vram_usage",
     "backend_summary",
     "BackendInfo",
+    "generate_text",
+    "mlx_generate",
+    # Config
+    "ProkoptonCLIConfig",
+    "load_config",
+    "save_config",
 ]

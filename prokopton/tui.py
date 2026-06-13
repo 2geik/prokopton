@@ -713,18 +713,66 @@ Keybindings (inside TUI):
         default="prokopton_memory",
         help="Memory save directory (default: prokopton_memory)",
     )
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Verbose output",
+    )
+    parser.add_argument(
+        "--quiet", "-q",
+        action="store_true",
+        help="Quiet mode (suppress non-essential output)",
+    )
+    parser.add_argument(
+        "--save-config",
+        action="store_true",
+        help="Save current CLI args as default config (~/.prokopton.yaml)",
+    )
 
     args = parser.parse_args()
 
+    # Load config file and merge CLI overrides
+    from prokopton.config import ProkoptonCLIConfig
+    cfg = ProkoptonCLIConfig.load()
+
+    # CLI args override config file
+    if args.model is not None:
+        cfg.model = args.model
+    if args.backend is not None:
+        cfg.backend = args.backend
+    if args.save_dir != "prokopton_memory":
+        cfg.save_dir = args.save_dir
+    if args.lr != 1e-3:
+        cfg.lr = args.lr
+    if args.n_layers != 5:
+        cfg.n_layers = args.n_layers
+    if args.verbose:
+        cfg.verbose = True
+    if args.quiet:
+        cfg.quiet = True
+
+    # Save config if requested
+    if args.save_config:
+        cfg.save()
+        print(f"💾 Config saved to ~/.prokopton.yaml")
+
     if args.no_ttt:
         args.lr = 0.0
+        cfg.lr = 0.0
+
+    # Use config values if CLI didn't override
+    model_arg = args.model or cfg.model or None
+    backend = args.backend or cfg.backend or None
+
+    if args.verbose:
+        print(f"Config: model={model_arg}, backend={backend}, lr={cfg.lr}, layers={cfg.n_layers}")
 
     app = ProkoptonTUI(
-        model_arg=args.model,
-        lr=args.lr,
-        n_layers=args.n_layers,
+        model_arg=model_arg,
+        lr=cfg.lr if not args.no_ttt else 0.0,
+        n_layers=cfg.n_layers,
         force_cpu=args.cpu,
-        force_backend=args.backend,
+        force_backend=backend,
         save_dir=args.save_dir,
     )
     app.run()

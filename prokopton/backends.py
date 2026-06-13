@@ -317,6 +317,97 @@ def _load_mlx(model_id_or_path: str):
     return model, tokenizer
 
 
+def mlx_generate(model, tokenizer, prompt: str, max_tokens: int = 256,
+                 temp: float = 0.7) -> str:
+    """
+    Generate text using an MLX model.
+
+    Args:
+        model: MLX model (from mlx_lm.load)
+        tokenizer: MLX tokenizer
+        prompt: Input text
+        max_tokens: Maximum tokens to generate
+        temp: Sampling temperature
+
+    Returns:
+        Generated text
+    """
+    try:
+        from mlx_lm import generate as mlx_gen
+    except ImportError:
+        raise ImportError("MLX not installed. pip install mlx-lm")
+
+    response = mlx_gen(
+        model, tokenizer,
+        prompt=prompt,
+        max_tokens=max_tokens,
+        temp=temp,
+        verbose=False,
+    )
+    return response
+
+
+def generate_text(model, tokenizer, prompt: str, max_new: int = 128,
+                  backend: Optional[BackendInfo] = None,
+                  stream: bool = False):
+    """
+    Unified text generation across backends.
+
+    Args:
+        model: Model (PyTorch or MLX)
+        tokenizer: Tokenizer
+        prompt: Input prompt
+        max_new: Max new tokens
+        backend: Backend info (auto-detect if None)
+        stream: If True, yields tokens one at a time
+
+    Returns:
+        Generated text string, or generator if stream=True
+    """
+    if backend is None:
+        backend = detect_backend()
+
+    if backend.name == "mlx" and backend.available:
+        text = mlx_generate(model, tokenizer, prompt, max_new)
+        if stream:
+            return (t for t in [text])  # MLX doesn't stream easily
+        return text
+
+    # PyTorch path
+    import torch
+    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512)
+    inputs = {k: v.to(model.device) for k, v in inputs.items()}
+
+    if stream:
+        return _stream_generate(model, tokenizer, inputs, max_new)
+    else:
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=max_new,
+                do_sample=False,
+                temperature=1.0,
+                pad_token_id=tokenizer.eos_token_id,
+            )
+        return tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+
+def _stream_generate(model, tokenizer, inputs, max_new: int):
+    """Generate text token by token (generator)."""
+    import torch
+    with torch.no_grad():
+        generated = inputs["input_ids"]
+        for _ in range(max_new):
+            outputs = model(generated)
+            logits = outputs.logits[:, -1, :]
+            next_token = torch.argmax(logits, dim=-1, keepdim=True)
+            if next_token.item() == tokenizer.eos_token_id:
+                break
+            generated = torch.cat([generated, next_token], dim=-1)
+            token_text = tokenizer.decode(next_token[0], skip_special_tokens=True)
+            yield token_text
+
+
 def _resolve_model_path(model_id_or_path: str) -> str:
     """Resolve model ID or local path."""
     path = Path(model_id_or_path)
