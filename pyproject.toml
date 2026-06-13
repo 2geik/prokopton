@@ -1,0 +1,29 @@
+[project]
+name = "prokopton"
+version = "0.1.0"
+description = "Continual-learning, non-forgetting, multimodal LLM (Nested Learning based) for AMD ROCm"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "numpy",
+    "torch",
+    "transformers",
+    "accelerate",
+    "titans-pytorch>=0.5.0",
+    "einops",
+    "safetensors",
+    "textual>=1.0.0",
+    "huggingface-hub>=0.20.0",
+]
+
+[project.scripts]
+prokopton = "prokopton.tui:main"
+prokopton-tui = "prokopton.tui:main"
+prokopton-repl = "prokopton.repl:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["prokopton"]

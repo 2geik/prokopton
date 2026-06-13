@@ -1,0 +1,9 @@
+numpy
+torch
+transformers>=5.0.0
+accelerate
+titans-pytorch>=0.5.0
+einops
+safetensors
+textual>=1.0.0
+huggingface-hub>=0.20.0

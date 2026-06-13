@@ -1,0 +1,40 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Model weights & data (large files)
+data/
+*.safetensors
+*.gguf
+*.npz
+checkpoints/
+adapters/
+hf_cache/
+
+# Experiment outputs
+experiments/runs/
+*.log
+
+# Project-specific
+prokopton_memory/
+prokopton_model/
+models/*
+!models/README.md
+.hermes/
+MEMORY.md
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
