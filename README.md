@@ -15,11 +15,10 @@ Not RAG or agent-memory — the parameters themselves change at inference time.
 - 🔄 **In-Place TTT** — MLP weights update on every conversation turn
 - 💾 **Persistent Memory** — CMS adapters saved to disk, reloaded on restart
 - 🎯 **Zero Forgetting** — Forgetting ≈ 0, anchor knowledge preserved
-- 🖼️🎵 **Multimodal** — Vision + direct audio (no STT pipeline)
+- 🖥️ **Multi-Platform** — ROCm · CUDA · MPS · MLX · CPU (auto-detected)
 - 🎮 **TUI Interface** — User-friendly terminal app (Textual)
 - ⬇️ **HF Model Downloader** — One-click from any HuggingFace URL
-- 🏃 **Headless Mode** — `--model` flag skips UI, loads directly
-- ⚙️ **Configurable** — lr, layers, rank all tunable via CLI or in-app
+- 🖼️🎵 **Multimodal** — Vision + direct audio (no STT pipeline)
 
 ---
 
@@ -30,23 +29,34 @@ Not RAG or agent-memory — the parameters themselves change at inference time.
 ```bash
 git clone https://github.com/2geik/prokopton.git
 cd prokopton
-
 python3 -m venv .venv
 source .venv/bin/activate
-
-# AMD GPU (ROCm)
-pip install torch --index-url https://download.pytorch.org/whl/rocm7.0
 pip install -e .
-
-# NVIDIA GPU: skip the --index-url line
 ```
+
+That's it — Prokopton auto-detects your GPU and picks the best backend.
+
+> **macOS Apple Silicon?** `pip install -e ".[mlx]"` for best performance (optional).
 
 ### Launch
 
 ```bash
-prokopton                # Interactive TUI, pick a model
-prokopton --help         # Show all options
+prokopton              # Interactive TUI, auto-detects your GPU
+prokopton --help       # Show all options
 ```
+
+### Platform-Specific Setup
+
+| Platform | PyTorch Install | Notes |
+|----------|----------------|-------|
+| **AMD GPU** (ROCm) | `pip install torch --index-url https://download.pytorch.org/whl/rocm7.0` | before `pip install -e .` |
+| **NVIDIA GPU** (CUDA) | `pip install torch` (PyPI default) | auto-detected |
+| **Apple Silicon** (MLX) | `pip install -e ".[mlx]"` | optional, falls back to MPS |
+| **Apple Silicon** (MPS) | `pip install torch` (PyPI default) | built into PyTorch |
+| **CPU-only** | `pip install torch --index-url https://download.pytorch.org/whl/cpu` | works everywhere |
+
+Prokopton auto-detects in this order: **ROCm → CUDA → MPS → MLX → CPU**.
+Override with `--backend rocm|cuda|mps|mlx|cpu`.
 
 ---
 
@@ -58,38 +68,39 @@ prokopton --help         # Show all options
 prokopton [OPTIONS]
 
 Options:
-  -m, --model MODEL     Model name or path (skip selection screen)
-  --lr LR               TTT learning rate (default: 0.001)
-  --n-layers N          Number of TTT layers (default: 5)
-  --no-ttt              Frozen model mode (no learning)
-  --cpu                 Force CPU (no GPU)
-  --save-dir DIR        Memory directory (default: prokopton_memory)
-  -h, --help            Show this help
+  -m, --model MODEL       Model name or path (skip selection screen)
+  -b, --backend BACKEND   Force backend: rocm, cuda, mps, mlx, cpu
+  --lr LR                 TTT learning rate (default: 0.001)
+  --n-layers N            Number of TTT layers (default: 5)
+  --no-ttt                Frozen model mode (no learning)
+  --cpu                   Force CPU mode
+  --save-dir DIR          Memory directory (default: prokopton_memory)
+  -h, --help              Show this help
 ```
 
 ### Common Patterns
 
 ```bash
-# Interactive — pick model in the UI
+# Interactive — auto-detect GPU, pick model in UI
 prokopton
 
 # Skip selection, load directly
 prokopton --model google/gemma-4-E2B
 
-# Load a local model from models/ folder
+# macOS with MLX
+prokopton --backend mlx --model google/gemma-4-E2B
+
+# Load local model from models/ folder
 prokopton --model models/gemma-4-E2B
 
 # Frozen mode (chat only, no learning)
 prokopton --model google/gemma-4-E2B --no-ttt
 
-# Custom learning rate and layer count
+# Custom learning rate
 prokopton --model google/gemma-4-E2B --lr 0.0005 --n-layers 3
 
-# CPU-only (no GPU required)
-prokopton --model google/gemma-4-E2B --cpu
-
-# Different memory directory per project
-prokopton --save-dir project_memory
+# CPU-only
+prokopton --cpu --model google/gemma-4-E2B
 ```
 
 ### Inside the TUI
@@ -108,7 +119,7 @@ prokopton --save-dir project_memory
 **Tabs:**
 - 💬 **Chat** — main conversation, every message triggers learning
 - 📊 **Stats** — steps, weight delta, buffer size, live updates
-- ⚙️ **Settings** — tune lr, layers, CMS rank; save/load/reset buttons
+- ⚙️ **Settings** — tune lr, layers, CMS rank; save/load/reset
 
 ### Getting a Model
 
@@ -135,14 +146,11 @@ Memory is stored as low-rank CMS adapters in `prokopton_memory/`.
 ## 🧪 Python API
 
 ```python
-from prokopton import Prokopton, ProkoptonConfig
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from prokopton import Prokopton, ProkoptonConfig, load_model
 
-# Load model
-model = AutoModelForCausalLM.from_pretrained(
-    "google/gemma-4-E2B", torch_dtype=torch.bfloat16, device_map="auto")
-tokenizer = AutoTokenizer.from_pretrained("google/gemma-4-E2B")
-tokenizer.pad_token = tokenizer.eos_token
+# Load with auto-detected backend
+be = detect_backend()
+model, tokenizer = load_model("google/gemma-4-E2B", be)
 
 # Wrap with Prokopton
 config = ProkoptonConfig(ttt_n_layers=5, ttt_lr=1e-3)
@@ -191,12 +199,17 @@ Prokopton works with any `AutoModelForCausalLM` model — it auto-detects MLP la
 
 ---
 
-## 🖥️ Hardware
+## 🖥️ Hardware Support
 
-- **Recommended:** AMD Radeon RX 6800+ (16 GB VRAM), ROCm 7.0+
-- **Minimum:** Any ROCm-compatible AMD GPU
-- **CPU fallback:** Works (`--cpu` flag) but slow
-- **RAM:** 32 GB recommended
+| Backend | Platform | GPU | Performance |
+|---------|----------|-----|-------------|
+| **ROCm** | Linux | AMD Radeon | Best on AMD |
+| **CUDA** | Linux/Windows | NVIDIA | Best on NVIDIA |
+| **MLX** | macOS | Apple Silicon (M1-M4) | Best on Mac |
+| **MPS** | macOS | Apple Silicon | Good fallback |
+| **CPU** | Any | None | Slow but works |
+
+Backend is **auto-detected** — no config needed. Override with `--backend`.
 
 ---
 
@@ -204,7 +217,7 @@ Prokopton works with any `AutoModelForCausalLM` model — it auto-detects MLP la
 
 | Stage | | Result |
 |---|---|---|
-| M0 | Environment | ROCm 7.2.4 + PyTorch 2.12.0 ✅ |
+| M0 | Environment | Multi-platform support ✅ |
 | M1(a) | Titans recall | Memory beyond attention window ✅ |
 | M1(b) | In-Place TTT | Loss dropped 45% ✅ |
 | M2 | ROCm profile | 19ms/chunk, 6k tok/s ✅ |

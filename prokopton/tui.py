@@ -44,6 +44,14 @@ from rich.console import RenderableType
 # Prokopton imports
 from prokopton.core import Prokopton, ProkoptonConfig
 from prokopton.models import AVAILABLE_MODELS
+from prokopton.backends import (
+    detect_backend,
+    load_model,
+    apply_backend_patches,
+    get_vram_usage,
+    backend_summary,
+    BackendInfo,
+)
 
 
 # ============================================================
@@ -386,13 +394,16 @@ class ProkoptonTUI(App):
         Binding("ctrl+p", "show_stats", "İstatistik", show=True),
     ]
 
-    def __init__(self, model_arg=None, lr=1e-3, n_layers=5, force_cpu=False, save_dir="prokopton_memory"):
+    def __init__(self, model_arg=None, lr=1e-3, n_layers=5, force_cpu=False, 
+                 force_backend=None, save_dir="prokopton_memory"):
         super().__init__()
         self.prokopton: Optional[Prokopton] = None
         self.model_name: str = ""
         self.model_path: str = ""
         self._model_arg = model_arg
         self._force_cpu = force_cpu
+        self._force_backend = force_backend
+        self.backend: Optional[BackendInfo] = None
         self.config = ProkoptonConfig(
             save_dir=save_dir,
             ttt_lr=lr,
@@ -434,12 +445,20 @@ class ProkoptonTUI(App):
         yield Footer()
 
     def on_mount(self):
-        """Başlangıçta model seçim ekranını göster veya --model ile direkt yükle."""
+        """Detect backend and show model selection or load directly."""
         if self._force_cpu:
             os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
+        # Detect optimal backend
+        self.backend = detect_backend(force=self._force_backend or ("cpu" if self._force_cpu else None))
+        info = backend_summary(self.backend)
+        self._log_chat(
+            f"🖥️  [bold]{info['description']}[/] | {info['gpu']}"
+            + (f" | {info['vram_gb']} GB" if info['vram_gb'] > 0 else ""),
+            "cyan"
+        )
+
         if self._model_arg:
-            # --model verilmiş, direkt yükle
             self._log_chat(f"⏳ Model yükleniyor: {self._model_arg}...", "yellow")
             self._load_model(self._model_arg)
         else:
@@ -457,52 +476,32 @@ class ProkoptonTUI(App):
         self._load_model(model_choice)
 
     def _load_model(self, model_id_or_path: str):
-        """Modeli yükle."""
+        """Modeli yükle — platform-agnostic."""
         try:
-            from transformers import AutoModelForCausalLM, AutoTokenizer
+            # Apply platform patches
+            apply_backend_patches(self.backend)
 
-            # ROCm için monkey-patch
-            if torch.cuda.is_available():
-                os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
-                import transformers.modeling_utils as tmu
-                if hasattr(tmu, "caching_allocator_warmup"):
-                    tmu.caching_allocator_warmup = lambda *a, **kw: None
+            self._log_chat(f"📥 Yükleniyor: {model_id_or_path}...", "yellow")
 
-            # Yerel klasör mü yoksa HF ID mi?
-            path = Path(model_id_or_path)
-            if path.exists() and path.is_dir():
-                source = str(path)
-                self.model_path = str(path)
-                self.model_name = path.name
-            else:
-                source = model_id_or_path
-                self.model_path = ""
-                self.model_name = model_id_or_path
+            # Use unified loader
+            model, tokenizer = load_model(model_id_or_path, self.backend)
 
-            self._log_chat(f"📥 Yükleniyor: {source}...", "yellow")
-
-            tokenizer = AutoTokenizer.from_pretrained(source)
-            if tokenizer.pad_token is None:
-                tokenizer.pad_token = tokenizer.eos_token
-
-            model = AutoModelForCausalLM.from_pretrained(
-                source,
-                torch_dtype=torch.bfloat16,
-                device_map="auto",
-            )
-
-            vram = torch.cuda.memory_allocated() / 1024**3 if torch.cuda.is_available() else 0
+            vram = get_vram_usage(self.backend)
+            self.model_name = model_id_or_path
 
             self.prokopton = Prokopton(model, tokenizer, self.config)
 
             # UI güncelle
             bar = self.query_one("#model_bar", ModelInfoBar)
             bar.model_name = self.model_name
-            bar.vram = vram
+            bar.vram = vram or self.backend.vram_gb
             bar.ttt_layers = len(self.prokopton.fast_weights)
 
+            bsummary = backend_summary(self.backend)
             self._log_chat(
-                f"✅ Model hazır: {self.model_name} | {vram:.1f} GB VRAM | "
+                f"✅ Model hazır: {self.model_name} | "
+                f"{bsummary['description']} | "
+                f"{bsummary['vram_gb']} GB VRAM | "
                 f"{len(self.prokopton.fast_weights)} TTT katmanı",
                 "green",
             )
@@ -704,6 +703,12 @@ Keybindings (inside TUI):
         help="Force CPU mode (no GPU)",
     )
     parser.add_argument(
+        "--backend", "-b",
+        choices=["rocm", "cuda", "mps", "mlx", "cpu"],
+        default=None,
+        help="Force specific backend (auto-detected by default)",
+    )
+    parser.add_argument(
         "--save-dir",
         default="prokopton_memory",
         help="Memory save directory (default: prokopton_memory)",
@@ -719,6 +724,7 @@ Keybindings (inside TUI):
         lr=args.lr,
         n_layers=args.n_layers,
         force_cpu=args.cpu,
+        force_backend=args.backend,
         save_dir=args.save_dir,
     )
     app.run()

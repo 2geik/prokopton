@@ -1,54 +1,48 @@
 """
-Prokopton Models — Gemma 4 graft entegrasyonu.
+Prokopton Models — Platform-agnostic model loading.
 
-Gemma 4 E2B/E4B/12B modellerini Prokopton ile sarmalayan fabrika fonksiyonları.
+Uses prokopton.backends for auto-detection.
 """
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
 from prokopton.core import Prokopton, ProkoptonConfig
+from prokopton.backends import detect_backend, load_model, apply_backend_patches, get_vram_usage
 
 
-def load_prokopton(model_name: str = "google/gemma-4-E2B", 
-                   lr: float = 1e-3,
-                   n_layers: int = 5,
-                   device: str = None) -> Prokopton:
+def load_prokopton(
+    model_name: str = "google/gemma-4-E2B",
+    lr: float = 1e-3,
+    n_layers: int = 5,
+    backend: str = None,
+) -> Prokopton:
     """
-    Prokopton modelini yükle.
-    
+    Load a Prokopton-wrapped model with optimal backend.
+
     Args:
-        model_name: HuggingFace model adı
-        lr: TTT öğrenme hızı
-        n_layers: TTT uygulanacak MLP katman sayısı
-        device: "cuda" veya "cpu"
-    
+        model_name: HuggingFace model ID or local path
+        lr: TTT learning rate
+        n_layers: Number of TTT layers
+        backend: Force backend ("rocm", "cuda", "mps", "mlx", "cpu")
+
     Returns:
-        Prokopton instance
+        Prokopton instance ready for chat/learn
     """
-    if device is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-    
+    be = detect_backend(force=backend)
+
+    print(f"🖥️  Backend: {be.description}")
+    print(f"   GPU: {be.gpu_name}")
+
+    apply_backend_patches(be)
+
     print(f"Loading {model_name}...")
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-    
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        dtype=torch.bfloat16,
-        device_map="auto",
-    )
-    
-    config = ProkoptonConfig(
-        ttt_lr=lr,
-        ttt_n_layers=n_layers,
-    )
-    
-    prokopton = Prokopton(model, tokenizer, config)
-    
-    vram = torch.cuda.memory_allocated() / 1024**3 if device == "cuda" else 0
-    print(f"  VRAM: {vram:.1f} GB  TTT layers: {len(prokopton.fast_weights)}")
-    
-    return prokopton
+    model, tokenizer = load_model(model_name, be)
+
+    vram = get_vram_usage(be) or be.vram_gb
+    print(f"   VRAM: {vram:.1f} GB")
+
+    config = ProkoptonConfig(ttt_lr=lr, ttt_n_layers=n_layers)
+    prok = Prokopton(model, tokenizer, config)
+
+    print(f"   TTT layers: {len(prok.fast_weights)}")
+    return prok
 
 
 # Model registry
@@ -57,18 +51,18 @@ AVAILABLE_MODELS = {
         "name": "google/gemma-4-E2B",
         "params": "5.1B",
         "vram_bf16": "9.5 GB",
-        "description": "En hafif, hızlı iterasyon için ideal",
+        "description": "Lightweight, ideal for fast iteration",
     },
     "e4b": {
-        "name": "google/gemma-4-E4B", 
+        "name": "google/gemma-4-E4B",
         "params": "7.9B",
         "vram_bf16": "14.2 GB",
-        "description": "Orta seviye, 16 GB'ta sınırda",
+        "description": "Mid-size, tight on 16 GB VRAM",
     },
     "12b": {
         "name": "google/gemma-4-12B",
         "params": "12B",
         "vram_bf16": "24+ GB",
-        "description": "En güçlü, 16 GB'a sığmaz (quantization gerekir)",
+        "description": "Most powerful, needs 24+ GB or quantization",
     },
 }

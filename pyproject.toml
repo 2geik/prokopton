@@ -1,13 +1,13 @@
 [project]
 name = "prokopton"
-version = "0.1.0"
-description = "Continual-learning, non-forgetting, multimodal LLM (Nested Learning based) for AMD ROCm"
+version = "0.2.0"
+description = "Continual-learning, non-forgetting, multimodal LLM — runs on ROCm, CUDA, MPS, MLX, CPU"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 dependencies = [
     "numpy",
-    "torch",
-    "transformers",
+    "torch>=2.0.0",
+    "transformers>=5.0.0",
     "accelerate",
     "titans-pytorch>=0.5.0",
     "einops",
@@ -15,6 +15,9 @@ dependencies = [
     "textual>=1.0.0",
     "huggingface-hub>=0.20.0",
 ]
+
+[project.optional-dependencies]
+mlx = ["mlx>=0.10.0", "mlx-lm>=0.10.0"]
 
 [project.scripts]
 prokopton = "prokopton.tui:main"
