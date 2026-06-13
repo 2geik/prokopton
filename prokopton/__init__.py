@@ -3,7 +3,7 @@
 Konuştukça ağırlıkları güncellenen, deneyim biriktikçe büyüyen, eskiyi unutmayan LLM.
 """
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 from prokopton.core import (
     Prokopton,

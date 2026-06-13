@@ -103,6 +103,15 @@ KONSOLİDASYON ("uyku")  = SDFT (öz-damıtma, on-policy KL/Top-K) + replay buff
   - **Model tespit sistemi:** `_detect_model_type()` → `is_gemma4`, `is_multimodal`, `oom_risk_multimodal`.
     Gelecekteki multimodal modeller (Gemma 4 12B Unified) için hazır.
   - **M0 ortam doğrulama:** `experiments/m0_environment.py` — 26 kontrollü tam sistem tanılama.
+- **v0.3.2 ✓ — Tokenizer eğitimi + HF dataset entegrasyonu (bugün):**
+  - **Tokenizer TTT öğrenmesi:** `_multimodal_learn_forward` artık AudioTokenizer (`input_proj`, `output_proj`)
+    ve VisualTokenizer (`proj`, `output_proj`) ağırlıklarını da güncelliyor.
+    Token'lar text'ten ÖNCE yerleştirildi → gradient akışı sağlandı.
+  - **M10 — HF dataset ile eğitim:** `experiments/m10_train_tokenizers.py`
+    - **ESC-50 (500 ses):** loss 8.5→4.3 (%50↓), audio output_proj ΔW=4.5, 35sn
+    - **Fashion-MNIST (2000 görsel):** loss 47.5→0.53 (%99↓), vision output_proj ΔW=6.2, 129sn
+    - **Toplam:** 2972 adım, 2.7dk, her iki tokenizer anlamlı projeksiyon öğrendi
+  - **Dataset pipeline:** `soundfile` ile raw ses çözme (torchcodec-free), `datasets` entegrasyonu
 
 ## Doğrulama (uçtan uca)
 1. `python -m prokopton.repl` ile sohbet; RAM ≤ 24 GB.
