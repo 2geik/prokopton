@@ -386,12 +386,18 @@ class ProkoptonTUI(App):
         Binding("ctrl+p", "show_stats", "İstatistik", show=True),
     ]
 
-    def __init__(self):
+    def __init__(self, model_arg=None, lr=1e-3, n_layers=5, force_cpu=False, save_dir="prokopton_memory"):
         super().__init__()
         self.prokopton: Optional[Prokopton] = None
         self.model_name: str = ""
         self.model_path: str = ""
-        self.config = ProkoptonConfig(save_dir="prokopton_memory")
+        self._model_arg = model_arg
+        self._force_cpu = force_cpu
+        self.config = ProkoptonConfig(
+            save_dir=save_dir,
+            ttt_lr=lr,
+            ttt_n_layers=n_layers,
+        )
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -428,8 +434,16 @@ class ProkoptonTUI(App):
         yield Footer()
 
     def on_mount(self):
-        """Başlangıçta model seçim ekranını göster."""
-        self.set_timer(0.5, self._prompt_model_select)
+        """Başlangıçta model seçim ekranını göster veya --model ile direkt yükle."""
+        if self._force_cpu:
+            os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
+        if self._model_arg:
+            # --model verilmiş, direkt yükle
+            self._log_chat(f"⏳ Model yükleniyor: {self._model_arg}...", "yellow")
+            self._load_model(self._model_arg)
+        else:
+            self.set_timer(0.5, self._prompt_model_select)
 
     def _prompt_model_select(self):
         self.push_screen(ModelSelectScreen(), self._on_model_selected)
@@ -643,7 +657,70 @@ class ProkoptonTUI(App):
 
 def main():
     """Prokopton TUI başlat."""
-    app = ProkoptonTUI()
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Prokopton — Konuştukça öğrenen, unutmayan LLM (TUI)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  prokopton                              # Interactive TUI
+  prokopton --model google/gemma-4-E2B   # Skip model selection
+  prokopton --lr 0.001 --n-layers 5      # Custom TTT settings
+  prokopton --cpu                        # Force CPU mode
+
+Keybindings (inside TUI):
+  Ctrl+Q  Quit          Ctrl+S  Save memory
+  Ctrl+L  Load memory   Ctrl+R  Reset memory
+  Ctrl+M  Switch model  Ctrl+D  Download from HF
+  Ctrl+P  Show stats    Enter   Send message
+        """,
+    )
+    parser.add_argument(
+        "--model", "-m",
+        default=None,
+        help="Model name or path (e.g. google/gemma-4-E2B, or local models/... path)",
+    )
+    parser.add_argument(
+        "--lr",
+        type=float,
+        default=1e-3,
+        help="TTT learning rate (default: 0.001)",
+    )
+    parser.add_argument(
+        "--n-layers",
+        type=int,
+        default=5,
+        help="Number of TTT layers (default: 5)",
+    )
+    parser.add_argument(
+        "--no-ttt",
+        action="store_true",
+        help="Disable TTT (frozen model mode)",
+    )
+    parser.add_argument(
+        "--cpu",
+        action="store_true",
+        help="Force CPU mode (no GPU)",
+    )
+    parser.add_argument(
+        "--save-dir",
+        default="prokopton_memory",
+        help="Memory save directory (default: prokopton_memory)",
+    )
+
+    args = parser.parse_args()
+
+    if args.no_ttt:
+        args.lr = 0.0
+
+    app = ProkoptonTUI(
+        model_arg=args.model,
+        lr=args.lr,
+        n_layers=args.n_layers,
+        force_cpu=args.cpu,
+        save_dir=args.save_dir,
+    )
     app.run()
 
 
