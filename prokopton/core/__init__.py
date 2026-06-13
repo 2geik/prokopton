@@ -522,83 +522,51 @@ class Prokopton:
     ):
         """Build combined embeddings, attention mask, and labels for multimodal forward.
 
-        Text   → embedding layer → text_embeddings [1, T, D]
-        Image  → VisionTokenizer  → vis_tokens      [1, V, D]  (already D-dim)
-        Audio  → AudioTokenizer   → aud_tokens      [1, A, D]  (already D-dim)
+        CRITICAL ORDERING: Multimodal tokens (audio, visual) come BEFORE text.
+        This ensures the loss on text token predictions creates a gradient path
+        through the tokenizer projection weights — the model must learn to
+        interpret audio/visual features to predict text correctly.
 
-        Returns (inputs_embeds, attention_mask, labels) ready for model.forward().
-        labels have -100 on multimodal positions → ignored in loss.
+        Layout: [AUDIO...] [VISUAL...] [TEXT...]
+        Labels:  -100      -100       target_ids
+                                        ↑
+        Prediction at last audio position → first text token → grad flows back!
         """
         device = self.model.device
         dtype = self.model.dtype
         embeds_list, mask_list = [], []
         text_ids_for_labels = None
+        n_multimodal_prefix = 0  # tracks how many tokens come before text
 
-        # ── 1. Text embeddings ──
-        if text is not None:
-            tokens = self.tokenizer(text, return_tensors="pt",
-                                    truncation=True, max_length=256)
-            tokens = {k: v.to(device) for k, v in tokens.items()}
-            text_ids = tokens["input_ids"]                     # [1, T]
-            text_mask = tokens["attention_mask"]               # [1, T]
-            embed_layer = self.model.get_input_embeddings()
-            text_embeds = embed_layer(text_ids).to(dtype)      # [1, T, D]
-            embeds_list.append(text_embeds)
-            mask_list.append(text_mask)
-            text_ids_for_labels = text_ids
-
-        # ── 2. Visual tokens (already D-dim, skip embed layer) ──
-        max_vis = self.config.max_visual_tokens
-        if image_tensor is not None:
-            if image_tensor.dim() == 3:
-                image_tensor = image_tensor.unsqueeze(0)       # [1, C, H, W]
-            image_tensor = image_tensor.to(device=device)      # keep float32 for tokenizer
-            vis_tokens, _vis_info = self.vision_tokenizer(image_tensor)
-            # vis_tokens: [B, V, D] — cast to model dtype
-            # Safety cap: trim excess tokens to prevent OOM on text-only models
-            if vis_tokens.shape[1] > max_vis:
-                vis_tokens = vis_tokens[:, :max_vis, :]
-            vis_mask = torch.ones(vis_tokens.shape[0], vis_tokens.shape[1],
-                                  device=device)
-            embeds_list.append(vis_tokens.to(dtype))
-            mask_list.append(vis_mask)
-
-        # ── 3. Audio tokens (already D-dim, skip embed layer) ──
-        # CRITICAL: Gemma 4 text-only models OOM with >~15 audio tokens
-        # because internal get_per_layer_inputs broadcast is O(token²).
-        # Hard cap enforced; warning emitted if truncation occurs.
+        # ── 1. Audio tokens FIRST (model must process these before text) ──
         max_aud = self.config.max_audio_tokens
         if self._model_info["oom_risk_multimodal"]:
-            # Gemma 4 text-only: tighter limit, explicit warning
             safe_max = min(max_aud, 15)
             max_aud = safe_max
 
         if waveform is not None:
-            waveform = waveform.to(device=device)              # keep float32 for tokenizer
+            waveform = waveform.to(device=device)
             aud_tokens_list, aud_info = self.audio_tokenizer(waveform)
-            # aud_tokens_list: list of [N, D] per batch item
             n_trimmed = 0
             if isinstance(aud_tokens_list, list):
                 for idx, at in enumerate(aud_tokens_list):
                     if at.dim() == 2:
-                        at = at.unsqueeze(0)                   # [1, A, D]
-                    # Safety cap: trim excess tokens
+                        at = at.unsqueeze(0)
                     if at.shape[1] > max_aud:
                         n_trimmed += at.shape[1] - max_aud
                         at = at[:, :max_aud, :]
-                    aud_mask = torch.ones(at.shape[0], at.shape[1],
-                                          device=device)
+                    aud_mask = torch.ones(at.shape[0], at.shape[1], device=device)
                     embeds_list.append(at.to(dtype))
                     mask_list.append(aud_mask)
+                    n_multimodal_prefix += at.shape[1]
             else:
-                # Already batched tensor
                 if aud_tokens_list.shape[1] > max_aud:
                     n_trimmed = aud_tokens_list.shape[1] - max_aud
                     aud_tokens_list = aud_tokens_list[:, :max_aud, :]
-                aud_mask = torch.ones(aud_tokens_list.shape[0],
-                                      aud_tokens_list.shape[1], device=device)
+                aud_mask = torch.ones(aud_tokens_list.shape[0], aud_tokens_list.shape[1], device=device)
                 embeds_list.append(aud_tokens_list.to(dtype))
                 mask_list.append(aud_mask)
+                n_multimodal_prefix += aud_tokens_list.shape[1]
 
             if n_trimmed > 0:
                 import warnings
@@ -611,6 +579,33 @@ class Prokopton:
                     RuntimeWarning
                 )
 
+        # ── 2. Visual tokens SECOND ──
+        max_vis = self.config.max_visual_tokens
+        if image_tensor is not None:
+            if image_tensor.dim() == 3:
+                image_tensor = image_tensor.unsqueeze(0)
+            image_tensor = image_tensor.to(device=device)
+            vis_tokens, _vis_info = self.vision_tokenizer(image_tensor)
+            if vis_tokens.shape[1] > max_vis:
+                vis_tokens = vis_tokens[:, :max_vis, :]
+            vis_mask = torch.ones(vis_tokens.shape[0], vis_tokens.shape[1], device=device)
+            embeds_list.append(vis_tokens.to(dtype))
+            mask_list.append(vis_mask)
+            n_multimodal_prefix += vis_tokens.shape[1]
+
+        # ── 3. Text embeddings LAST (labels target these) ──
+        if text is not None:
+            tokens = self.tokenizer(text, return_tensors="pt",
+                                    truncation=True, max_length=256)
+            tokens = {k: v.to(device) for k, v in tokens.items()}
+            text_ids = tokens["input_ids"]
+            text_mask = tokens["attention_mask"]
+            embed_layer = self.model.get_input_embeddings()
+            text_embeds = embed_layer(text_ids).to(dtype)
+            embeds_list.append(text_embeds)
+            mask_list.append(text_mask)
+            text_ids_for_labels = text_ids
+
         # ── Combine ──
         if not embeds_list:
             raise ValueError("En az bir modalite (text, image, audio) gerekli")
@@ -618,16 +613,25 @@ class Prokopton:
         combined_embeds = torch.cat(embeds_list, dim=1)        # [1, total, D]
         combined_mask = torch.cat(mask_list, dim=1)            # [1, total]
 
-        # ── Build labels (text-only positions have targets; multimodal = -100) ──
+        # ── Build labels ──
+        # Labels: -100 for multimodal prefix positions, text token IDs for text positions.
+        # The critical part: logits at the LAST multimodal position predict the FIRST
+        # text token → gradient flows from text loss back through tokenizer weights!
         total_len = combined_embeds.shape[1]
         text_len = text_ids_for_labels.shape[1] if text_ids_for_labels is not None else 0
 
-        # labels[i] = target token for logits[i]; last position has no target
         labels = torch.full((1, total_len - 1), -100, dtype=torch.long, device=device)
         if text_len > 1:
-            # logits[0..text_len-2] → predict text_ids[1..text_len-1]
-            copy_len = min(text_len - 1, total_len - 1)
-            labels[0, :copy_len] = text_ids_for_labels[0, 1:copy_len + 1]
+            # text tokens start at position 'n_multimodal_prefix'
+            # logits[i] predicts token at position i+1
+            # We need labels for logits positions where the target is a text token
+            text_start_in_labels = n_multimodal_prefix - 1  # logit at last mm position → first text token
+            if text_start_in_labels < 0:
+                text_start_in_labels = 0
+            copy_len = min(text_len - 1, total_len - 1 - text_start_in_labels)
+            if copy_len > 0:
+                labels[0, text_start_in_labels:text_start_in_labels + copy_len] = \
+                    text_ids_for_labels[0, 1:copy_len + 1]
 
         return combined_embeds, combined_mask, labels
 
@@ -637,6 +641,12 @@ class Prokopton:
         """Core multimodal forward: build embeds → forward → TTT update → return.
 
         Shared by learn_image / learn_audio / learn_multimodal.
+
+        Key difference from text-only learn(): tokenizer projection weights
+        (audio.input_proj, audio.output_proj, vision.input_proj, vision.output_proj)
+        are ALSO included in the TTT gradient update. This means the tokenizers
+        LEARN to map acoustic/visual features into the model's embedding space
+        through repeated labeled examples.
         """
         embeds, attn_mask, labels = self._prepare_multimodal_embeds(
             text, image_tensor, waveform)
@@ -650,12 +660,38 @@ class Prokopton:
             ignore_index=-100,
         )
 
-        # TTT grads + update
+        # ── Collect all trainable weights for TTT update ──
+        # Layer 0..N-1: MLP fast-weights (always)
+        # Extra: tokenizer projection layers (only when their modality is active)
         weights = [fw.layer.weight for fw in self.fast_weights]
+        weight_labels = [f"mlp_l{i}" for i in range(len(self.fast_weights))]
+
+        # Audio tokenizer projections — only if audio was provided
+        has_audio = waveform is not None
+        if has_audio:
+            weights.append(self.audio_tokenizer.output_proj.weight)
+            weight_labels.append("audio_out")
+            weights.append(self.audio_tokenizer.input_proj.weight)
+            weight_labels.append("audio_in")
+
+        # Vision tokenizer projections — only if image was provided
+        has_vision = image_tensor is not None
+        if has_vision:
+            weights.append(self.vision_tokenizer.output_proj.weight)
+            weight_labels.append("vision_out")
+            weights.append(self.vision_tokenizer.proj.weight)
+            weight_labels.append("vision_in")
+
+        # ── Single backward pass for all weights ──
         grads = torch.autograd.grad(loss, weights, retain_graph=False)
         surprise = loss.item()
 
-        for fw, grad in zip(self.fast_weights, grads):
+        # ── Apply updates ──
+        # MLP fast-weights (index 0..N-1): use FastWeight momentum + surprise-gate
+        n_mlp = len(self.fast_weights)
+        for i in range(n_mlp):
+            fw = self.fast_weights[i]
+            grad = grads[i]
             eff_lr = fw.effective_lr(surprise)
             fw.total_surprise += surprise
             fw.velocity = fw.momentum * fw.velocity - eff_lr * grad
@@ -663,6 +699,26 @@ class Prokopton:
                 fw.layer.weight.add_(fw.velocity)
             fw.update_count += 1
             fw._dirty = True
+
+        # Tokenizer projections (index n_mlp..end): direct momentum update
+        # These learn to map raw features into the embedding space.
+        # Same lr and momentum as TTT, no surprise-gating (always learn from
+        # multimodal signals to build the projection).
+        tok_lr = self.config.ttt_lr * 0.5  # slightly lower LR for stability
+        tok_momentum = self.config.ttt_momentum
+        for i in range(n_mlp, len(weights)):
+            grad = grads[i]
+            label = weight_labels[i]
+            # Get or create momentum buffer
+            if not hasattr(self, '_tok_velocity'):
+                self._tok_velocity = {}
+            if label not in self._tok_velocity:
+                self._tok_velocity[label] = torch.zeros_like(weights[i])
+            vel = self._tok_velocity[label]
+            vel = tok_momentum * vel - tok_lr * grad
+            self._tok_velocity[label] = vel
+            with torch.no_grad():
+                weights[i].add_(vel)
 
         self.model.zero_grad()
         self.model.eval()
@@ -872,12 +928,26 @@ class Prokopton:
         for fw in self.fast_weights:
             fw.mark_clean()
 
+        # Save trained tokenizer weights alongside the model
+        tok_path = save_path / "prokopton_tokenizers.pt"
+        tok_state = {
+            "audio_input_proj": self.audio_tokenizer.input_proj.state_dict(),
+            "audio_output_proj": self.audio_tokenizer.output_proj.state_dict(),
+            "vision_input_proj": self.vision_tokenizer.proj.state_dict(),
+            "vision_output_proj": self.vision_tokenizer.output_proj.state_dict(),
+        }
+        # Include momentum buffers if any training happened
+        if hasattr(self, '_tok_velocity') and self._tok_velocity:
+            tok_state["_tok_velocity"] = {k: v.cpu() for k, v in self._tok_velocity.items()}
+        torch.save(tok_state, tok_path)
+
         # Save with transformers
         self.model.save_pretrained(str(save_path))
         self.tokenizer.save_pretrained(str(save_path))
 
         print(f"💾 Değişmiş model kaydedildi: {save_path}/ "
               f"(transformers ile yüklenebilir: AutoModelForCausalLM.from_pretrained('{save_path}'))")
+        print(f"   Tokenizer ağırlıkları: {tok_path}")
 
     def load(self, path: str = None, silent_on_missing: bool = False):
         """
@@ -938,6 +1008,9 @@ class Prokopton:
             fw.reset()
         for cms in self.cms_adapters:
             cms.mark_clean()
+        # Clear tokenizer momentum buffers (trained projections reset)
+        if hasattr(self, '_tok_velocity'):
+            self._tok_velocity = {}
         self.replay_buffer = SurpriseBuffer(self.config.per_capacity)
         self.step_counter = 0
         self.conversation_history = []
@@ -962,4 +1035,8 @@ class Prokopton:
         for i, cms in enumerate(self.cms_adapters):
             base[f"cms_{i}_freq"] = cms.frequency
             base[f"cms_{i}_dirty"] = cms.is_dirty
+        # Tokenizer training stats
+        if hasattr(self, '_tok_velocity') and self._tok_velocity:
+            for label, vel in self._tok_velocity.items():
+                base[f"tok_{label}_dW"] = f"{vel.norm().item():.6f}"
         return base
