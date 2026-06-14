@@ -126,6 +126,14 @@ KONSOLİDASYON ("uyku")  = SDFT (öz-damıtma, on-policy KL/Top-K) + replay buff
   - **Audio ΔW: 8.41** (+49%), **Vision ΔW: 7.85** (+45%)
   - **COCO loss düşüşü %72→%82** (10pp iyileşme)
   - Flickr30k kaliteli caption'lar sayesinde COCO'nun düştüğü 8.3'ten 6.9'a indi
+- **v0.4.0 ✓ — ProkoptonVL: Gerçek Multimodal VLM (bugün):**
+  - **Qwen3-VL-2B-Instruct** tabanlı — 2.1B params, 4.3 GB VRAM
+  - Encoder-free tokenizer'lar yerine **Qwen'in kendi vision encoder'ı** kullanılıyor
+  - TTT fast-weight'leri LM'in **down_proj** katmanlarına uygulanıyor (5 katman)
+  - CMS adaptörleri multi-frequency konsolidasyon (5 adaptör)
+  - `prokopton/vlm.py` — `ProkoptonVL` sınıfı: `learn_image()`, `chat()`, `generate()`, `save_pretrained()`
+  - Görsel test: plaj sahnesi → "deniz kıyısı, güneş, gökyüzü açık mavi" ✅
+  - `torchvision` ROCm uyumlu kuruldu (0.27.0+rocm7.2)
 
 ## Doğrulama (uçtan uca)
 1. `python -m prokopton.repl` ile sohbet; RAM ≤ 24 GB.
