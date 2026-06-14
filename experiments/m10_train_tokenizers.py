@@ -8,7 +8,7 @@ Dataset'ler:
   - RAVDESS (1440 konuşma, 8 duygu: neutral, calm, happy, sad, angry, fearful, disgust, surprised)
   - ESC-50 (2000 çevresel ses, 50 sınıf)
   - COCO 2017 Captions (büyük görseller, caption'lı, 118k train)
-  - Speech Commands v2 (105k konuşma, 35 kelime)
+  - Flickr30k (30k yüksek kaliteli caption'lı görsel, lmms-lab/flickr30k)
 
 RX 6800 16GB için optimize edildi: tüm sesler torchcodec-free (soundfile ile çözülür).
 
@@ -130,7 +130,7 @@ def main():
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--audio-duration", type=float, default=2.5,
                         help="Max audio duration in seconds (longer audio = more context)")
-    parser.add_argument("--image-min-size", type=int, default=96,
+    parser.add_argument("--image-min-size", type=int, default=128,
                         help="Minimum image dimension (bigger = more detail)")
     parser.add_argument("--ravdess-samples", type=int, default=1440,
                         help="RAVDESS speech samples (max 1440)")
@@ -138,6 +138,8 @@ def main():
                         help="ESC-50 environmental sounds (max 2000)")
     parser.add_argument("--coco-samples", type=int, default=5000,
                         help="COCO image samples (max 118k)")
+    parser.add_argument("--flickr30k-samples", type=int, default=3000,
+                        help="Flickr30k image samples (max 30k)")
     parser.add_argument("--output-model", default="prokopton_trained",
                         help="Directory to save trained model via save_pretrained()")
     args = parser.parse_args()
@@ -329,6 +331,53 @@ def main():
               f"({n_coco/elapsed:.1f} örnek/sn)")
 
     # ═══════════════════════════════════════════════════════════
+    # PHASE 4: Flickr30k — High-Quality Captioned Images
+    # ═══════════════════════════════════════════════════════════
+    print(f"\n{'─'*68}")
+    print(f"PHASE 4: Yüksek Kaliteli Görseller — Flickr30k ({args.flickr30k_samples} örnek)")
+    print(f"{'─'*68}")
+
+    n_flickr = 0
+    flickr_losses = []
+
+    try:
+        flickr = load_dataset("lmms-lab/flickr30k", split="test", streaming=True)
+        flickr = flickr.shuffle(seed=42).take(args.flickr30k_samples)
+    except Exception as e:
+        print(f"   ⚠ Flickr30k yüklenemedi: {e}")
+        flickr = None
+
+    if flickr is not None:
+        t0 = time.time()
+        for idx, sample in enumerate(flickr):
+            try:
+                img = preprocess_image(sample["image"], min_size=args.image_min_size)
+                captions = sample.get("caption", [])
+                if isinstance(captions, list) and len(captions) > 0:
+                    caption = str(captions[0])
+                else:
+                    caption = "A high-quality photograph showing people, objects, or scenes."
+
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    result = prok.learn_multimodal({"text": caption, "image": img})
+
+                flickr_losses.append(result["loss"])
+                total_steps += 1
+                n_flickr += 1
+
+                if (idx + 1) % 1000 == 0:
+                    avg = sum(flickr_losses[-1000:]) / min(1000, len(flickr_losses))
+                    print(f"   [{idx+1:5d}/{args.flickr30k_samples}] loss={result['loss']:.4f} avg={avg:.4f}")
+
+            except Exception as e:
+                continue
+
+        elapsed = time.time() - t0
+        print(f"   ✅ Flickr30k: {n_flickr} örnek, {elapsed:.1f}s "
+              f"({n_flickr/elapsed:.1f} örnek/sn)")
+
+    # ═══════════════════════════════════════════════════════════
     # SUMMARY + SAVE
     # ═══════════════════════════════════════════════════════════
     total_elapsed = time.time() - total_start
@@ -365,13 +414,21 @@ def main():
         print(f"      Son loss:  {coco_losses[-1]:.4f}")
         print(f"      Δ loss:    {coco_losses[0] - coco_losses[-1]:+.4f}")
 
+    print(f"\n   📊 Flickr30k (yüksek kaliteli caption'lı):")
+    print(f"      Örnek:     {n_flickr}")
+    print(f"      Görsel boy:≥{args.image_min_size}px")
+    if flickr_losses:
+        print(f"      İlk loss:  {flickr_losses[0]:.4f}")
+        print(f"      Son loss:  {flickr_losses[-1]:.4f}")
+        print(f"      Δ loss:    {flickr_losses[0] - flickr_losses[-1]:+.4f}")
+
     print(f"\n   🔧 Ağırlık değişimleri:")
     print(f"      Audio out:  ΔW = {adw_out:.4f}")
     print(f"      Audio in:   ΔW = {adw_in:.4f}")
     print(f"      Vision out: ΔW = {vdw_out:.4f}")
     print(f"      Vision in:  ΔW = {vdw_in:.4f}")
 
-    total_samples = n_ravdess + n_esc50 + n_coco
+    total_samples = n_ravdess + n_esc50 + n_coco + n_flickr
     print(f"\n   📈 Toplam: {total_samples} örnek, {total_steps} adım, "
           f"{total_elapsed:.0f}s ({total_elapsed/60:.1f}dk)")
 
@@ -384,7 +441,7 @@ def main():
     else:
         verdicts.append("❌ Audio öğrenmedi")
     if vdw_out > 0.5:
-        verdicts.append("✅ Visual tokenizer anlamlı öğrendi (COCO)")
+        verdicts.append("✅ Visual tokenizer anlamlı öğrendi (COCO + Flickr30k)")
     elif vdw_out > 0.05:
         verdicts.append("⚠ Visual az öğrendi")
     else:

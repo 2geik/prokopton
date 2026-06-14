@@ -113,6 +113,19 @@ KONSOLİDASYON ("uyku")  = SDFT (öz-damıtma, on-policy KL/Top-K) + replay buff
     - **COCO 2017 (500 büyük görsel, 96px+):** loss 36.3→10.3 (%72↓), vision ΔW=5.4
     - **Toplam:** 3940 örnek, 7.9dk, model `prokopton_trained/` (229 MB)
     - `save_pretrained()` ile ağırlıklar modele GÖMÜLDÜ — vanilla transformers ile yüklenebilir
+- **v0.3.3 ✓ — 3-dataset eğitim (bugün):**
+  - **RAVDESS (1440 duygulu konuşma):** loss 9.1→1.2 (%87↓), audio ΔW=5.66
+  - **ESC-50 (2000 çevresel ses):** loss 19.8→1.2 (%94↓), audio ΔW=5.66
+  - **COCO 2017 (500 görsel, 96px):** loss 36.3→10.3 (%72↓), vision ΔW=5.40
+  - RAVDESS label string/int fix, COCO `lmms-lab/COCO-Caption2017` düzeltme
+- **v0.3.4 ✓ — Flickr30k + ölçek artışı (bugün):**
+  - **COCO 5000 örnek (10x):** loss 46.3→8.3 (%82↓), vision ΔW=**7.85** (+45%)
+  - **Flickr30k 3000 örnek (YENİ):** `lmms-lab/flickr30k`, 5 caption'lı profesyonel fotoğraf, loss 10.7→6.9
+  - **Görsel boyutu 96→128px** — daha detaylı embedding
+  - **Toplam:** 11440 örnek (3940→11440), 13.3dk (7.9→13.3dk)
+  - **Audio ΔW: 8.41** (+49%), **Vision ΔW: 7.85** (+45%)
+  - **COCO loss düşüşü %72→%82** (10pp iyileşme)
+  - Flickr30k kaliteli caption'lar sayesinde COCO'nun düştüğü 8.3'ten 6.9'a indi
 
 ## Doğrulama (uçtan uca)
 1. `python -m prokopton.repl` ile sohbet; RAM ≤ 24 GB.
