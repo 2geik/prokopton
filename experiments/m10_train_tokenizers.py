@@ -117,6 +117,8 @@ RAVDESS_EMOTIONS = [
     "neutral", "calm", "happy", "sad", "angry",
     "fearful", "disgust", "surprised"
 ]
+# Reverse map for string labels
+RAVDESS_LABEL_MAP = {e: i for i, e in enumerate(RAVDESS_EMOTIONS)}
 
 # ═══════════════════════════════════════════════════════════════
 # Main training
@@ -201,8 +203,12 @@ def main():
         for idx, sample in enumerate(ds):
             try:
                 wav = preprocess_audio(sample["audio"], max_duration=args.audio_duration)
-                emotion_idx = sample["label"]
-                emotion = RAVDESS_EMOTIONS[emotion_idx] if emotion_idx < 8 else f"emotion_{emotion_idx}"
+                # label can be string ("angry") or int — handle both
+                raw_label = sample["label"]
+                if isinstance(raw_label, str):
+                    emotion = raw_label  # already human-readable
+                else:
+                    emotion = RAVDESS_EMOTIONS[int(raw_label)] if int(raw_label) < 8 else f"emotion_{raw_label}"
                 text = (
                     f"A person is speaking with a {emotion} tone of voice. "
                     f"The emotional expression sounds {emotion}."

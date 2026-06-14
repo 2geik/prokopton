@@ -107,11 +107,12 @@ KONSOLİDASYON ("uyku")  = SDFT (öz-damıtma, on-policy KL/Top-K) + replay buff
   - **Tokenizer TTT öğrenmesi:** `_multimodal_learn_forward` artık AudioTokenizer (`input_proj`, `output_proj`)
     ve VisualTokenizer (`proj`, `output_proj`) ağırlıklarını da güncelliyor.
     Token'lar text'ten ÖNCE yerleştirildi → gradient akışı sağlandı.
-  - **M10 — HF dataset ile eğitim:** `experiments/m10_train_tokenizers.py`
-    - **ESC-50 (500 ses):** loss 8.5→4.3 (%50↓), audio output_proj ΔW=4.5, 35sn
-    - **Fashion-MNIST (2000 görsel):** loss 47.5→0.53 (%99↓), vision output_proj ΔW=6.2, 129sn
-    - **Toplam:** 2972 adım, 2.7dk, her iki tokenizer anlamlı projeksiyon öğrendi
-  - **Dataset pipeline:** `soundfile` ile raw ses çözme (torchcodec-free), `datasets` entegrasyonu
+  - **M10 v2 — HF dataset ile büyük ölçekli eğitim:** `experiments/m10_train_tokenizers.py`
+    - **RAVDESS (1440 duygulu konuşma):** loss 9.1→1.2 (%87↓), audio ΔW=5.7
+    - **ESC-50 (2000 çevresel ses):** loss 19.8→1.2 (%94↓), audio ΔW=5.7
+    - **COCO 2017 (500 büyük görsel, 96px+):** loss 36.3→10.3 (%72↓), vision ΔW=5.4
+    - **Toplam:** 3940 örnek, 7.9dk, model `prokopton_trained/` (229 MB)
+    - `save_pretrained()` ile ağırlıklar modele GÖMÜLDÜ — vanilla transformers ile yüklenebilir
 
 ## Doğrulama (uçtan uca)
 1. `python -m prokopton.repl` ile sohbet; RAM ≤ 24 GB.
