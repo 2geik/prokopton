@@ -1,9 +1,9 @@
 numpy
-torch
-transformers>=5.0.0
+torch>=2.0.0
+transformers>=4.57,<6
 accelerate
-titans-pytorch>=0.5.0
 einops
 safetensors
 textual>=1.0.0
 huggingface-hub>=0.20.0
+pyyaml>=6.0

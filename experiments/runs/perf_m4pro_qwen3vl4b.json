@@ -1,0 +1,48 @@
+{
+  "label": "performance",
+  "hardware": "Apple M4 Pro, 24 GB unified memory",
+  "backend": "MPS",
+  "model": "Qwen/Qwen3-VL-4B-Instruct",
+  "dtype": "bfloat16",
+  "device": "mps:0",
+  "environment": {
+    "torch": "2.14.0",
+    "transformers": "5.17.0",
+    "python": "3.12.14",
+    "macOS": "darwin/arm64"
+  },
+  "method": "median of 5 timed runs after 2 warmups; TTT on 5 down_proj layers (31-35)",
+  "latency_ms": {
+    "generate_64_new_tokens": 3067,
+    "generate_completion_64": 3069,
+    "learn_raw": 1649,
+    "learn_raw_with_kl_anchor": 2205,
+    "learn_lowrank": 1462,
+    "learn_plus_generate": 5272
+  },
+  "footprint": {
+    "model_plus_ttt_state_gb": 11.74,
+    "checkpoint_5_layers_rank64_mb": 15.7
+  },
+  "learning_signal": {
+    "fact": "Zephyria's capital is Aethel. Zephyria's currency is the Zephyr.",
+    "turns": 25,
+    "loss_first8": 1.9102,
+    "loss_last8": 1.4867,
+    "loss_reduction_pct": 22.2,
+    "max_drift_ratio": 0.000451,
+    "trust_region_tau": 0.01
+  },
+  "persistence": {
+    "roundtrip_cycles": 5,
+    "max_relative_delta_error": 1.2e-05,
+    "pre_fix_behaviour": "delta multiplied by ~2x on every load (1.99x -> 3.99x -> 7.98x)",
+    "checkpoint_files": ["cms_0.pt", "cms_1.pt", "cms_2.pt", "cms_3.pt", "cms_4.pt", "metadata.json"],
+    "full_rank_delta_files_written": false
+  },
+  "anti_contamination": {
+    "unseen_facts_accuracy": 0.0,
+    "contaminated_probes": 0
+  },
+  "reproduce": ["python scripts/acceptance.py", "python -m pytest -q"]
+}

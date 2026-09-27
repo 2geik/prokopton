@@ -16,8 +16,10 @@ checkpoints/
 adapters/
 hf_cache/
 
-# Experiment outputs
-experiments/runs/
+# Experiment outputs — committed as artifacts (IMPROVEMENT_PLAN.md §1.5)
+# Keep bulky raw captures out, but never ignore the run records themselves.
+experiments/runs/**/*.mp4
+experiments/runs/**/*.png
 *.log
 
 # Project-specific

@@ -1,15 +1,16 @@
 [project]
 name = "prokopton"
-version = "0.3.2"
+version = "0.5.0"
 description = "Continual-learning, non-forgetting, multimodal LLM — runs on ROCm, CUDA, MPS, MLX, CPU"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 dependencies = [
     "numpy",
     "torch>=2.0.0",
-    "transformers>=5.0.0",
+    # Qwen3-VL needs >= 4.57; Gemma-4 (any-to-any) needs >= 5.5. The range is
+    # verified installable on this index.
+    "transformers>=4.57,<6",
     "accelerate",
-    "titans-pytorch>=0.5.0",
     "einops",
     "safetensors",
     "textual>=1.0.0",
@@ -18,7 +19,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Frozen-inference acceleration on Apple Silicon. MLX models are not
+# torch.nn.Module instances and cannot be used with TTT.
 mlx = ["mlx>=0.10.0", "mlx-lm>=0.10.0"]
+# Only used by experiments/m1_associative_recall.py.
+titans = ["titans-pytorch>=0.5.0"]
 test = ["pytest>=7.0", "pytest-cov>=4.0"]
 
 [project.scripts]
@@ -37,3 +42,7 @@ packages = ["prokopton"]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-v --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning:prokopton.core",
+    "ignore::RuntimeWarning",
+]

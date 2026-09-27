@@ -1,0 +1,548 @@
+{
+  "model": "Qwen3-VL-4B",
+  "seed": 0,
+  "repeats": 3,
+  "baseline": {
+    "taught": {
+      "label": "baseline:taught",
+      "n": 9,
+      "accuracy": 0.0,
+      "first_token_top1": 0.0,
+      "mean_rank": Infinity,
+      "mrr": 0.0586,
+      "contaminated": 0,
+      "topk": 5,
+      "environment": {
+        "torch": "2.14.0",
+        "transformers": "5.17.0",
+        "device": "mps:0",
+        "model_type": "qwen3_vl"
+      },
+      "timestamp": "2026-09-27T22:00:03.285285"
+    },
+    "unseen": {
+      "label": "baseline:unseen",
+      "n": 5,
+      "accuracy": 0.0,
+      "first_token_top1": 0.0,
+      "mean_rank": Infinity,
+      "mrr": 0.05,
+      "contaminated": 0,
+      "topk": 5,
+      "environment": {
+        "torch": "2.14.0",
+        "transformers": "5.17.0",
+        "device": "mps:0",
+        "model_type": "qwen3_vl"
+      },
+      "timestamp": "2026-09-27T22:00:03.492601"
+    },
+    "anchors": {
+      "label": "baseline:anchors",
+      "n": 10,
+      "accuracy": 0.4,
+      "first_token_top1": 0.3,
+      "mean_rank": Infinity,
+      "mrr": 0.35,
+      "contaminated": 0,
+      "topk": 5,
+      "environment": {
+        "torch": "2.14.0",
+        "transformers": "5.17.0",
+        "device": "mps:0",
+        "model_type": "qwen3_vl"
+      },
+      "timestamp": "2026-09-27T22:00:03.905580"
+    }
+  },
+  "sequence": [
+    {
+      "step": 1,
+      "task": "T1:facts",
+      "scores": {
+        "taught": {
+          "label": "step1:taught",
+          "n": 9,
+          "accuracy": 0.0,
+          "first_token_top1": 0.0,
+          "mean_rank": Infinity,
+          "mrr": 0.0586,
+          "contaminated": 0,
+          "topk": 5,
+          "environment": {
+            "torch": "2.14.0",
+            "transformers": "5.17.0",
+            "device": "mps:0",
+            "model_type": "qwen3_vl"
+          },
+          "timestamp": "2026-09-27T22:00:10.900286"
+        },
+        "unseen": {
+          "label": "step1:unseen",
+          "n": 5,
+          "accuracy": 0.0,
+          "first_token_top1": 0.0,
+          "mean_rank": Infinity,
+          "mrr": 0.05,
+          "contaminated": 0,
+          "topk": 5,
+          "environment": {
+            "torch": "2.14.0",
+            "transformers": "5.17.0",
+            "device": "mps:0",
+            "model_type": "qwen3_vl"
+          },
+          "timestamp": "2026-09-27T22:00:11.106060"
+        },
+        "anchors": {
+          "label": "step1:anchors",
+          "n": 10,
+          "accuracy": 0.4,
+          "first_token_top1": 0.3,
+          "mean_rank": Infinity,
+          "mrr": 0.35,
+          "contaminated": 0,
+          "topk": 5,
+          "environment": {
+            "torch": "2.14.0",
+            "transformers": "5.17.0",
+            "device": "mps:0",
+            "model_type": "qwen3_vl"
+          },
+          "timestamp": "2026-09-27T22:00:11.476496"
+        }
+      },
+      "delta_vs_frozen": {
+        "taught": {
+          "accuracy": 0.0,
+          "first_token_top1": 0.0,
+          "mean_rank": NaN,
+          "mrr": 0.0
+        },
+        "unseen": {
+          "accuracy": 0.0,
+          "first_token_top1": 0.0,
+          "mean_rank": NaN,
+          "mrr": 0.0
+        },
+        "anchors": {
+          "accuracy": 0.0,
+          "first_token_top1": 0.0,
+          "mean_rank": NaN,
+          "mrr": 0.0
+        }
+      },
+      "time_s": 7.5709240436553955,
+      "ttt_stats": {
+        "steps": 3,
+        "interactions": 3,
+        "skipped_steps": 0,
+        "updates": 15,
+        "weight_change": 0.1496663261204958,
+        "max_drift_ratio": 0.00027005852678337614,
+        "trust_region": 0.01,
+        "total_surprise": 49.27024722099304,
+        "buffer_size": 3,
+        "history_len": 0,
+        "memory_version": 1,
+        "layer_0_dw": "0.0300",
+        "layer_0_drift": "0.000245",
+        "layer_0_updates": 3,
+        "layer_0_skipped": 0,
+        "layer_0_eff_lr": "0.010000",
+        "layer_1_dw": "0.0300",
+        "layer_1_drift": "0.000245",
+        "layer_1_updates": 3,
+        "layer_1_skipped": 0,
+        "layer_1_eff_lr": "0.010000",
+        "layer_2_dw": "0.0300",
+        "layer_2_drift": "0.000247",
+        "layer_2_updates": 3,
+        "layer_2_skipped": 0,
+        "layer_2_eff_lr": "0.010000",
+        "layer_3_dw": "0.0297",
+        "layer_3_drift": "0.000257",
+        "layer_3_updates": 3,
+        "layer_3_skipped": 0,
+        "layer_3_eff_lr": "0.010000",
+        "layer_4_dw": "0.0300",
+        "layer_4_drift": "0.000270",
+        "layer_4_updates": 3,
+        "layer_4_skipped": 0,
+        "layer_4_eff_lr": "0.010000",
+        "cms_0_freq": 32,
+        "cms_0_dirty": false,
+        "cms_0_scale": 1.0,
+        "cms_1_freq": 64,
+        "cms_1_dirty": false,
+        "cms_1_scale": 1.0,
+        "cms_2_freq": 128,
+        "cms_2_dirty": false,
+        "cms_2_scale": 1.0,
+        "cms_3_freq": 256,
+        "cms_3_dirty": false,
+        "cms_3_scale": 1.0,
+        "cms_4_freq": 512,
+        "cms_4_dirty": false,
+        "cms_4_scale": 1.0
+      }
+    },
+    {
+      "step": 2,
+      "task": "T2:codes",
+      "scores": {
+        "taught": {
+          "label": "step2:taught",
+          "n": 9,
+          "accuracy": 0.1111,
+          "first_token_top1": 0.0,
+          "mean_rank": Infinity,
+          "mrr": 0.0602,
+          "contaminated": 0,
+          "topk": 5,
+          "environment": {
+            "torch": "2.14.0",
+            "transformers": "5.17.0",
+            "device": "mps:0",
+            "model_type": "qwen3_vl"
+          },
+          "timestamp": "2026-09-27T22:00:18.538974"
+        },
+        "unseen": {
+          "label": "step2:unseen",
+          "n": 5,
+          "accuracy": 0.0,
+          "first_token_top1": 0.0,
+          "mean_rank": Infinity,
+          "mrr": 0.0536,
+          "contaminated": 0,
+          "topk": 5,
+          "environment": {
+            "torch": "2.14.0",
+            "transformers": "5.17.0",
+            "device": "mps:0",
+            "model_type": "qwen3_vl"
+          },
+          "timestamp": "2026-09-27T22:00:18.746761"
+        },
+        "anchors": {
+          "label": "step2:anchors",
+          "n": 10,
+          "accuracy": 0.4,
+          "first_token_top1": 0.3,
+          "mean_rank": Infinity,
+          "mrr": 0.35,
+          "contaminated": 0,
+          "topk": 5,
+          "environment": {
+            "torch": "2.14.0",
+            "transformers": "5.17.0",
+            "device": "mps:0",
+            "model_type": "qwen3_vl"
+          },
+          "timestamp": "2026-09-27T22:00:19.112099"
+        }
+      },
+      "delta_vs_frozen": {
+        "taught": {
+          "accuracy": 0.1111111111111111,
+          "first_token_top1": 0.0,
+          "mean_rank": NaN,
+          "mrr": 0.0015432098765432167
+        },
+        "unseen": {
+          "accuracy": 0.0,
+          "first_token_top1": 0.0,
+          "mean_rank": NaN,
+          "mrr": 0.0035714285714285726
+        },
+        "anchors": {
+          "accuracy": 0.0,
+          "first_token_top1": 0.0,
+          "mean_rank": NaN,
+          "mrr": 0.0
+        }
+      },
+      "time_s": 15.206468105316162,
+      "ttt_stats": {
+        "steps": 6,
+        "interactions": 6,
+        "skipped_steps": 1,
+        "updates": 25,
+        "weight_change": 0.21520991623401642,
+        "max_drift_ratio": 0.00038667251397897533,
+        "trust_region": 0.01,
+        "total_surprise": 73.50910425186157,
+        "buffer_size": 6,
+        "history_len": 0,
+        "memory_version": 1,
+        "layer_0_dw": "0.0432",
+        "layer_0_drift": "0.000352",
+        "layer_0_updates": 5,
+        "layer_0_skipped": 1,
+        "layer_0_eff_lr": "0.000000",
+        "layer_1_dw": "0.0431",
+        "layer_1_drift": "0.000351",
+        "layer_1_updates": 5,
+        "layer_1_skipped": 1,
+        "layer_1_eff_lr": "0.000000",
+        "layer_2_dw": "0.0430",
+        "layer_2_drift": "0.000354",
+        "layer_2_updates": 5,
+        "layer_2_skipped": 1,
+        "layer_2_eff_lr": "0.000000",
+        "layer_3_dw": "0.0430",
+        "layer_3_drift": "0.000373",
+        "layer_3_updates": 5,
+        "layer_3_skipped": 1,
+        "layer_3_eff_lr": "0.000000",
+        "layer_4_dw": "0.0429",
+        "layer_4_drift": "0.000387",
+        "layer_4_updates": 5,
+        "layer_4_skipped": 1,
+        "layer_4_eff_lr": "0.000000",
+        "cms_0_freq": 32,
+        "cms_0_dirty": false,
+        "cms_0_scale": 1.0,
+        "cms_1_freq": 64,
+        "cms_1_dirty": false,
+        "cms_1_scale": 1.0,
+        "cms_2_freq": 128,
+        "cms_2_dirty": false,
+        "cms_2_scale": 1.0,
+        "cms_3_freq": 256,
+        "cms_3_dirty": false,
+        "cms_3_scale": 1.0,
+        "cms_4_freq": 512,
+        "cms_4_dirty": false,
+        "cms_4_scale": 1.0
+      }
+    },
+    {
+      "step": 3,
+      "task": "T3:places",
+      "scores": {
+        "taught": {
+          "label": "step3:taught",
+          "n": 9,
+          "accuracy": 0.1111,
+          "first_token_top1": 0.0,
+          "mean_rank": Infinity,
+          "mrr": 0.0602,
+          "contaminated": 0,
+          "topk": 5,
+          "environment": {
+            "torch": "2.14.0",
+            "transformers": "5.17.0",
+            "device": "mps:0",
+            "model_type": "qwen3_vl"
+          },
+          "timestamp": "2026-09-27T22:00:24.598958"
+        },
+        "unseen": {
+          "label": "step3:unseen",
+          "n": 5,
+          "accuracy": 0.0,
+          "first_token_top1": 0.0,
+          "mean_rank": Infinity,
+          "mrr": 0.0536,
+          "contaminated": 0,
+          "topk": 5,
+          "environment": {
+            "torch": "2.14.0",
+            "transformers": "5.17.0",
+            "device": "mps:0",
+            "model_type": "qwen3_vl"
+          },
+          "timestamp": "2026-09-27T22:00:24.804778"
+        },
+        "anchors": {
+          "label": "step3:anchors",
+          "n": 10,
+          "accuracy": 0.4,
+          "first_token_top1": 0.3,
+          "mean_rank": Infinity,
+          "mrr": 0.35,
+          "contaminated": 0,
+          "topk": 5,
+          "environment": {
+            "torch": "2.14.0",
+            "transformers": "5.17.0",
+            "device": "mps:0",
+            "model_type": "qwen3_vl"
+          },
+          "timestamp": "2026-09-27T22:00:25.167785"
+        }
+      },
+      "delta_vs_frozen": {
+        "taught": {
+          "accuracy": 0.1111111111111111,
+          "first_token_top1": 0.0,
+          "mean_rank": NaN,
+          "mrr": 0.0015432098765432167
+        },
+        "unseen": {
+          "accuracy": 0.0,
+          "first_token_top1": 0.0,
+          "mean_rank": NaN,
+          "mrr": 0.0035714285714285726
+        },
+        "anchors": {
+          "accuracy": 0.0,
+          "first_token_top1": 0.0,
+          "mean_rank": NaN,
+          "mrr": 0.0
+        }
+      },
+      "time_s": 21.26214599609375,
+      "ttt_stats": {
+        "steps": 9,
+        "interactions": 9,
+        "skipped_steps": 4,
+        "updates": 25,
+        "weight_change": 0.21520991623401642,
+        "max_drift_ratio": 0.00038667251397897533,
+        "trust_region": 0.01,
+        "total_surprise": 73.50910425186157,
+        "buffer_size": 9,
+        "history_len": 0,
+        "memory_version": 1,
+        "layer_0_dw": "0.0432",
+        "layer_0_drift": "0.000352",
+        "layer_0_updates": 5,
+        "layer_0_skipped": 4,
+        "layer_0_eff_lr": "0.000000",
+        "layer_1_dw": "0.0431",
+        "layer_1_drift": "0.000351",
+        "layer_1_updates": 5,
+        "layer_1_skipped": 4,
+        "layer_1_eff_lr": "0.000000",
+        "layer_2_dw": "0.0430",
+        "layer_2_drift": "0.000354",
+        "layer_2_updates": 5,
+        "layer_2_skipped": 4,
+        "layer_2_eff_lr": "0.000000",
+        "layer_3_dw": "0.0430",
+        "layer_3_drift": "0.000373",
+        "layer_3_updates": 5,
+        "layer_3_skipped": 4,
+        "layer_3_eff_lr": "0.000000",
+        "layer_4_dw": "0.0429",
+        "layer_4_drift": "0.000387",
+        "layer_4_updates": 5,
+        "layer_4_skipped": 4,
+        "layer_4_eff_lr": "0.000000",
+        "cms_0_freq": 32,
+        "cms_0_dirty": false,
+        "cms_0_scale": 1.0,
+        "cms_1_freq": 64,
+        "cms_1_dirty": false,
+        "cms_1_scale": 1.0,
+        "cms_2_freq": 128,
+        "cms_2_dirty": false,
+        "cms_2_scale": 1.0,
+        "cms_3_freq": 256,
+        "cms_3_dirty": false,
+        "cms_3_scale": 1.0,
+        "cms_4_freq": 512,
+        "cms_4_dirty": false,
+        "cms_4_scale": 1.0
+      }
+    }
+  ],
+  "final": {
+    "taught": {
+      "label": "final:taught",
+      "n": 9,
+      "accuracy": 0.1111,
+      "first_token_top1": 0.0,
+      "mean_rank": Infinity,
+      "mrr": 0.0602,
+      "contaminated": 0,
+      "topk": 5,
+      "environment": {
+        "torch": "2.14.0",
+        "transformers": "5.17.0",
+        "device": "mps:0",
+        "model_type": "qwen3_vl"
+      },
+      "timestamp": "2026-09-27T22:00:26.458280"
+    },
+    "unseen": {
+      "label": "final:unseen",
+      "n": 5,
+      "accuracy": 0.0,
+      "first_token_top1": 0.0,
+      "mean_rank": Infinity,
+      "mrr": 0.0536,
+      "contaminated": 0,
+      "topk": 5,
+      "environment": {
+        "torch": "2.14.0",
+        "transformers": "5.17.0",
+        "device": "mps:0",
+        "model_type": "qwen3_vl"
+      },
+      "timestamp": "2026-09-27T22:00:26.664305"
+    },
+    "anchors": {
+      "label": "final:anchors",
+      "n": 10,
+      "accuracy": 0.4,
+      "first_token_top1": 0.3,
+      "mean_rank": Infinity,
+      "mrr": 0.35,
+      "contaminated": 0,
+      "topk": 5,
+      "environment": {
+        "torch": "2.14.0",
+        "transformers": "5.17.0",
+        "device": "mps:0",
+        "model_type": "qwen3_vl"
+      },
+      "timestamp": "2026-09-27T22:00:27.028014"
+    }
+  },
+  "final_delta_vs_frozen": {
+    "taught": {
+      "accuracy": 0.1111111111111111,
+      "first_token_top1": 0.0,
+      "mean_rank": NaN,
+      "mrr": 0.0015432098765432167
+    },
+    "unseen": {
+      "accuracy": 0.0,
+      "first_token_top1": 0.0,
+      "mean_rank": NaN,
+      "mrr": 0.0035714285714285726
+    },
+    "anchors": {
+      "accuracy": 0.0,
+      "first_token_top1": 0.0,
+      "mean_rank": NaN,
+      "mrr": 0.0
+    }
+  },
+  "metrics": {
+    "growth_taught": 0.1111111111111111,
+    "anchor_drift": 0.0,
+    "unseen_change": 0.0,
+    "forgetting": 0.0,
+    "max_drift_ratio": 0.00038667251397897533,
+    "skipped_steps": 4,
+    "total_time_s": 25.22988224029541
+  },
+  "verdicts": [
+    "\u2713 anchors preserved",
+    "\u2713 untaught facts not hallucinated into",
+    "\u2713 growth on taught facts",
+    "\u2713 trust region respected"
+  ],
+  "artifact": "experiments/runs/eval_Qwen3-VL-4B_20260927-220029.json",
+  "environment": {
+    "torch": "2.14.0",
+    "transformers": "5.17.0",
+    "device": "mps:0",
+    "model_type": "qwen3_vl"
+  }
+}

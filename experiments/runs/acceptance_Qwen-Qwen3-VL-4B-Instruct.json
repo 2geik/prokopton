@@ -1,0 +1,138 @@
+{
+  "model": "Qwen/Qwen3-VL-4B-Instruct",
+  "checks": [
+    {
+      "name": "auto-model class is multimodal",
+      "ok": true,
+      "detail": "AutoModelForImageTextToText"
+    },
+    {
+      "name": "loads on the target backend",
+      "ok": true,
+      "detail": "Qwen3VLForConditionalGeneration torch.bfloat16 on mps:0, 8.33 GB"
+    },
+    {
+      "name": "loads in bf16",
+      "ok": true,
+      "detail": "torch.bfloat16"
+    },
+    {
+      "name": "selected layers are the LM's down_proj",
+      "ok": true,
+      "detail": "model.language_model.layers.31.mlp.down_proj, model.language_model.layers.32.mlp.down_proj, model.language_model.layers.33.mlp.down_proj, model.language_model.layers.34.mlp.down_proj, model.language_model.layers.35.mlp.down_proj"
+    },
+    {
+      "name": "prompt not echoed by generate()",
+      "ok": true,
+      "detail": "' The capital of Zephyria is **Aeris**.\\n\\nZephyria'"
+    },
+    {
+      "name": "generate_completion() is raw",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "loss decreases on repeated exposure",
+      "ok": true,
+      "detail": "first 4 avg 2.2859 -> last 4 avg 1.4946 (34.6%)"
+    },
+    {
+      "name": "drift bounded by tau",
+      "ok": true,
+      "detail": "||dW||/||W0|| = 0.000449 <= 0.01"
+    },
+    {
+      "name": "surprise gate reports skips",
+      "ok": true,
+      "detail": "updates=25 skipped_steps=11"
+    },
+    {
+      "name": "delta preserved, never multiplied",
+      "ok": true,
+      "detail": "max relative err over 3 cycles = 6.166e-06"
+    },
+    {
+      "name": "no full-rank delta files",
+      "ok": true,
+      "detail": "cms_0.pt, cms_1.pt, cms_2.pt, cms_3.pt, cms_4.pt, metadata.json"
+    },
+    {
+      "name": "schema version + fingerprint",
+      "ok": true,
+      "detail": "schema=3 fp=47731d4acce30a98"
+    },
+    {
+      "name": "environment metadata recorded",
+      "ok": true,
+      "detail": "{\"torch\": \"2.14.0\", \"transformers\": \"5.17.0\", \"device\": \"mps:0\", \"python\": \"3.12.14\"}"
+    },
+    {
+      "name": "conversation history persisted",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "accuracy on never-taught facts is 0",
+      "ok": true,
+      "detail": "accuracy=0.0 contaminated=0"
+    },
+    {
+      "name": "no probe answer leaks into its prompt",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "stats": {
+    "steps": 16,
+    "interactions": 16,
+    "skipped_steps": 11,
+    "updates": 25,
+    "weight_change": 0.24776433780789375,
+    "max_drift_ratio": 0.00044926427103377675,
+    "trust_region": 0.01,
+    "total_surprise": 54.10851240158081,
+    "buffer_size": 16,
+    "history_len": 0,
+    "memory_version": 1,
+    "layer_0_dw": "0.0499",
+    "layer_0_drift": "0.000408",
+    "layer_0_updates": 5,
+    "layer_0_skipped": 11,
+    "layer_0_eff_lr": "0.000000",
+    "layer_1_dw": "0.0499",
+    "layer_1_drift": "0.000407",
+    "layer_1_updates": 5,
+    "layer_1_skipped": 11,
+    "layer_1_eff_lr": "0.000000",
+    "layer_2_dw": "0.0499",
+    "layer_2_drift": "0.000411",
+    "layer_2_updates": 5,
+    "layer_2_skipped": 11,
+    "layer_2_eff_lr": "0.000000",
+    "layer_3_dw": "0.0482",
+    "layer_3_drift": "0.000417",
+    "layer_3_updates": 5,
+    "layer_3_skipped": 11,
+    "layer_3_eff_lr": "0.000000",
+    "layer_4_dw": "0.0499",
+    "layer_4_drift": "0.000449",
+    "layer_4_updates": 5,
+    "layer_4_skipped": 11,
+    "layer_4_eff_lr": "0.000000",
+    "cms_0_freq": 32,
+    "cms_0_dirty": false,
+    "cms_0_scale": 1.0,
+    "cms_1_freq": 64,
+    "cms_1_dirty": false,
+    "cms_1_scale": 1.0,
+    "cms_2_freq": 128,
+    "cms_2_dirty": false,
+    "cms_2_scale": 1.0,
+    "cms_3_freq": 256,
+    "cms_3_dirty": false,
+    "cms_3_scale": 1.0,
+    "cms_4_freq": 512,
+    "cms_4_dirty": false,
+    "cms_4_scale": 1.0
+  }
+}

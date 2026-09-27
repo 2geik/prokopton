@@ -143,19 +143,39 @@ KONSOLİDASYON ("uyku")  = SDFT (öz-damıtma, on-policy KL/Top-K) + replay buff
 5. M6 tam koşum: transfer + latency raporu.
 
 ## Riskler / dürüst sınırlar
-- 16 GB VRAM tavanı: base donuk, sadece In-Place TTT fast weights + küçük CMS adaptörleri eğitilir.
-- Çok parça aynı anda = entegrasyon riski → **aşamalı** ekliyoruz (önce In-Place TTT tek başına).
-- AI-sentez raporları (Gemini'ninki ve ilk planımız) literatür hipotezidir; uygulama sırasında
-  arXiv PDF'leri okunup mekanizmalar teyit edilir (özet teyidi yapıldı: 2604.06169, 2601.19897,
-  2606.10231, 2604.24763, 2512.24695, 2501.00663).
+- **SDFT uygulanmadı.** 2601.19897'deki demonstration-conditioned self-teacher
+  hiçbir yerde yok. Bunun yerine `W₀`'ya karşı **KL anchor cezası** (`kl_weight`)
+  var; tam SDFT hâlâ gelecek iş. ("SDFT ✓" iddiaları yanlıştır.)
+- **CMS bir birikici değil, bir anlık görüntüdür.** `consolidate()` mevcut Δ'yı
+  rank-`cms_rank`'e SVD ile damıtır; Δ'yı *yutup temizlemez*. Kalıcılık
+  `W = W₀ + Δ_saved` (idempotent `restore()`) üzerinden gelir; `commit()` ayrı
+  ve tek yönlüdür.
+- **MLX TTT'yi desteklemez.** MLX modelleri `torch.nn.Module` değildir;
+  `torch.autograd.grad` ağırlıklarını güncelleyemez. MLX yalnız donuk sohbet için
+  (`--no-ttt` + `allow_non_torch=True`) açıktır; öğrenme bağlamında
+  `detect_backend(require_torch=True)` MLX'i asla seçmez.
+- **`google/gemma-4-E2B` text-only DEĞİLDİR.** `vision_config`, `audio_config`,
+  `image_token_id`, `audio_token_id` taşıyan any-to-any bir modeldir. Encoder-free
+  ses çabası bu yüzden gereksizdi; asıl hedef yerel VLM yolu (`ProkoptonVL`).
+- 24 GB tavanı (M4 Pro): base donuk, sadece In-Place TTT fast weights + küçük CMS
+  adaptörleri eğitilir. Ayrıntılı bütçe: `docs/memory-budget.md`.
+- Kullanıcı metni doğrudan gradyana dönüşür → zehirleme yüzeyi gerçek. Sınırlar
+  (`ttt_trust_region`, decay, sürpriz kapısı, hedef maskesi) ve denetim
+  noktaları README'nin "Threat model" bölümünde.
+- AI-sentez raporları literatür hipotezidir; uygulama sırasında arXiv PDF'leri
+  okunup mekanizmalar teyit edilir.
 - RW-TTT/Alchemist (serving) bilinçli olarak kapsam dışı.
 
 ## Açık araştırma soruları (devrim potansiyeli)
 - ~~In-Place TTT fast weights'i **çok-frekanslı CMS** olarak organize etmek~~ → **✓ ÇÖZÜLDÜ (v0.3.0):** Her katman 2^layer frekansında konsolide oluyor.
-- ~~**Sürpriz-kapılı** fast-weight güncellemesi + **sürpriz-öncelikli** SDFT konsolidasyonu~~ → **✓ ÇÖZÜLDÜ (v0.3.0):** `FastWeight.effective_lr()` adaptif LR, EMA normalizasyonlu.
+- ~~**Sürpriz-kapılı** fast-weight güncellemesi~~ → **✓ ÇÖZÜLDÜ:** sürpriz artık
+  LR'yi ölçeklendirmiyor (bu, momentumla birleşip etkin adımı 50×'e çıkarıyordu);
+  bunun yerine z-skoru **kapısı** olarak çalışıyor ve atlanan adımlar sayılıyor.
+  **Sürpriz-öncelikli SDFT konsolidasyonu hâlâ YAPILMADI.**
 - Modaliteler-arası birleşik sürpriz: sesteki sürpriz metin hafızasını besliyor mu? (multimodal pipeline hazır, test edilmedi)
 - AMD GPU'da ucuz per-chunk fast-weight güncellemesi (ROCm). → **✓ DOĞRULANDI:** TTT overhead sadece %7 (365ms vs 4921ms generate)
-- **YENİ:** Gerçek multimodal model (Gemma 4 12B Unified) ile ses/görsel duygu tanıma. E2B text-only olduğu için sınırlı.
+- Gerçek multimodal model ile ses/görsel duygu tanıma. (E2B'nin text-only olduğu
+  iddiası yanlıştı; konu `ProkoptonVL` üzerinden yeniden ele alınıyor.)
 - **YENİ:** Audio tokenizer performans optimizasyonu (Mel döngüsü numpy vektörizasyonu)
 - **YENİ:** Gemma 4 multimodal forward OOM fix (audio token limiti)
 ```

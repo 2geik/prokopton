@@ -20,6 +20,7 @@ Kullanım:
 import sys, argparse, torch, json
 from pathlib import Path
 from prokopton.core import Prokopton, ProkoptonConfig
+from prokopton.models import DEFAULT_MODEL
 
 
 def print_banner(model_name, device):
@@ -64,33 +65,29 @@ def show_stats(prokopton):
 
 def main():
     ap = argparse.ArgumentParser(description="Prokopton REPL")
-    ap.add_argument("--model", default="google/gemma-4-E2B", 
+    ap.add_argument("--model", default=DEFAULT_MODEL,
                     help="Model adı (HuggingFace)")
-    ap.add_argument("--lr", type=float, default=1e-3, help="TTT öğrenme hızı")
+    ap.add_argument("--lr", type=float, default=1e-2, help="TTT öğrenme hızı")
     ap.add_argument("--n-layers", type=int, default=5, help="TTT katman sayısı")
-    ap.add_argument("--no-ttt", action="store_true", help="TTT'yi kapat (donuk model)")
+    ap.add_argument("--backend", default=None,
+                    help='Backend zorla ("rocm", "cuda", "mps", "cpu")')
+    ap.add_argument("--no-ttt", action="store_true",
+                    help="TTT'yi kapat (donuk model). MLX yalnız bu modda kullanılabilir.")
     args = ap.parse_args()
-    
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-    
+
+    from prokopton.backends import detect_backend, load_model, get_vram_usage, print_backend_info
+
+    be = detect_backend(force=args.backend, require_torch=not args.no_ttt)
+    print_backend_info(be)
+
     print(f"Loading {args.model}...")
-    tokenizer = AutoTokenizer.from_pretrained(args.model)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-    
-    model = AutoModelForCausalLM.from_pretrained(
-        args.model,
-        dtype=torch.bfloat16,
-        device_map="auto",
-    )
-    
-    vram = torch.cuda.memory_allocated() / 1024**3 if device == "cuda" else 0
+    model, tokenizer = load_model(args.model, be, allow_non_torch=args.no_ttt)
+
+    vram = get_vram_usage(be) or be.vram_gb
     print(f"  VRAM: {vram:.1f} GB")
-    
+
     config = ProkoptonConfig(
-        ttt_lr=args.lr if not args.no_ttt else 0.0,
+        ttt_lr=0.0 if args.no_ttt else args.lr,
         ttt_n_layers=args.n_layers,
     )
     

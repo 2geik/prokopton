@@ -675,15 +675,11 @@ class ProkoptonTUI(App):
             return
 
         try:
-            # learn + generate (loss yakalamak için ayrı ayrı)
-            self.prokopton.conversation_history.append(f"User: {user_text}")
-            context = "\n".join(self.prokopton.conversation_history[-6:])
-            prompt = f"{context}\nAssistant:"
-
-            learn_info = self.prokopton.learn(user_text)
-            response = self.prokopton.generate(prompt, max_new=256)
-            assistant_part = response.split("Assistant:")[-1].strip()
-            self.prokopton.conversation_history.append(f"Assistant: {assistant_part}")
+            # chat() builds the prompt with the tokenizer's chat template,
+            # generates, then learns from the ASSISTANT reply only — never from
+            # the raw user utterance (Phase 2.9).
+            assistant_part = self.prokopton.chat(user_text, max_new=256)
+            learn_info = getattr(self.prokopton, "_last_chat_info", {}) or {}
 
             # Track loss
             self.loss_history.append({
@@ -722,10 +718,11 @@ class ProkoptonTUI(App):
             save_path = Path("prokopton_model")
             save_path.mkdir(exist_ok=True)
 
-            # CMS adaptörlerini base modele göm
+            # CMS adaptörlerini base modele göm — commit() tek yönlüdür:
+            # Δ W₀'ya katlanır ve sıfırlanır.
             for cms in self.prokopton.cms_adapters:
                 cms.consolidate()
-                cms.apply_to_model()
+                cms.commit()
 
             self.prokopton.model.save_pretrained(str(save_path))
             self.prokopton.tokenizer.save_pretrained(str(save_path))

@@ -4,19 +4,30 @@ Prokopton Backend — Platform-agnostic GPU/CPU model loading.
 Auto-detects the best available backend:
     ROCm (AMD) > CUDA (NVIDIA) > MPS (macOS) > MLX (Apple Silicon) > CPU
 
+MLX is a *frozen-inference* backend only: its models are not ``torch.nn.Module``
+instances, so test-time training (``torch.autograd.grad`` over module weights)
+cannot touch them. :func:`detect_backend` therefore never returns MLX when a
+learning context is requested, and :func:`load_model` refuses MLX unless
+``allow_non_torch=True``.
+
 Usage:
     from prokopton.backends import detect_backend, load_model
 
-    backend = detect_backend()
-    model, tokenizer = load_model("google/gemma-4-E2B", backend)
+    backend = detect_backend(require_torch=True)
+    model, tokenizer = load_model("Qwen/Qwen3-VL-4B-Instruct", backend)
 """
 
+import json
 import os
 import sys
 import platform
 from dataclasses import dataclass, field
 from typing import Optional, Tuple, Any, Dict
 from pathlib import Path
+
+
+class MLXUnsupportedForLearning(RuntimeError):
+    """Raised when an MLX model is requested in a test-time-training context."""
 
 
 @dataclass
@@ -32,6 +43,7 @@ class BackendInfo:
     is_amd: bool = False
     is_nvidia: bool = False
     needs_warmup_patch: bool = False  # ROCm monkey-patch needed
+    supports_ttt: bool = True         # False for MLX: no torch autograd path
 
     @property
     def torch_dtype(self):
@@ -42,12 +54,14 @@ class BackendInfo:
         return torch.bfloat16
 
 
-def detect_backend(force: Optional[str] = None) -> BackendInfo:
+def detect_backend(force: Optional[str] = None, require_torch: bool = False) -> BackendInfo:
     """
     Detect the best available GPU/CPU backend.
 
     Args:
         force: Override detection ("cuda", "cpu", "mps", "mlx", "rocm")
+        require_torch: When True, never return the MLX backend. Use this for any
+            learning/TTT context — an MLX model has no ``torch.autograd`` path.
 
     Returns:
         BackendInfo with device details
@@ -56,7 +70,14 @@ def detect_backend(force: Optional[str] = None) -> BackendInfo:
 
     if force:
         force = force.lower()
-        return _build_forced(force)
+        info = _build_forced(force)
+        if require_torch and info.name == "mlx":
+            raise MLXUnsupportedForLearning(
+                "MLX was requested but cannot support test-time training "
+                "(the returned model is not a torch.nn.Module, so "
+                "torch.autograd.grad cannot update its weights). "
+                "Use --backend mps, or pass allow_non_torch=True for frozen chat only.")
+        return info
 
     # 1. ROCm (presents as CUDA with HIP)
     if torch.cuda.is_available():
@@ -73,12 +94,13 @@ def detect_backend(force: Optional[str] = None) -> BackendInfo:
 
     # 3. Apple Silicon
     if platform.system() == "Darwin" and _is_apple_silicon():
-        # Try MLX first (best performance on Apple Silicon)
-        mlx_info = _build_mlx()
-        if mlx_info.available:
-            return mlx_info
+        # MLX first only when frozen inference is acceptable.
+        if not require_torch:
+            mlx_info = _build_mlx()
+            if mlx_info.available:
+                return mlx_info
 
-        # Fall back to MPS
+        # MPS — the only Apple-Silicon path that supports TTT.
         if torch.backends.mps.is_available():
             return _build_mps(torch)
 
@@ -157,9 +179,10 @@ def _build_mlx() -> BackendInfo:
         device="cpu",  # MLX doesn't use torch device
         description="Apple MLX",
         is_apple_silicon=True,
+        supports_ttt=False,
     )
     try:
-        import mlx.core as mx
+        import mlx.core as mx  # noqa: F401
         info.available = True
         info.gpu_name = "Apple Silicon (MLX)"
         info.vram_gb = _get_macos_memory_gb()
@@ -230,9 +253,101 @@ def apply_backend_patches(backend: BackendInfo):
 # Unified model loader
 # ============================================================
 
+# architecture suffix → transformers auto class name
+_ARCH_TO_AUTO = (
+    ("ForImageTextToText", "AutoModelForImageTextToText"),
+    ("ForMultimodalLM", "AutoModelForMultimodalLM"),
+    ("ForConditionalGeneration", "AutoModelForImageTextToText"),
+    ("ForCausalLM", "AutoModelForCausalLM"),
+    ("ForSeq2SeqLM", "AutoModelForSeq2SeqLM"),
+)
+
+# multimodal `model_type` values that need a multimodal auto class
+_MULTIMODAL_MODEL_TYPES = {
+    "qwen3_vl", "qwen2_vl", "qwen2_5_vl", "gemma4", "llava", "llava_next",
+    "llava_onevision", "internvl", "paligemma", "chameleon", "aria",
+    "aya_vision", "blip", "blip-2", "fuyu", "kosmos-2", "mllama", "qwen_vl",
+}
+
+
+def read_model_config(model_id_or_path: str) -> Dict[str, Any]:
+    """Read a model's ``config.json`` without loading weights."""
+    source = _resolve_model_path(model_id_or_path)
+    cfg_path = Path(source) / "config.json"
+    if cfg_path.exists():
+        with open(cfg_path) as f:
+            return json.load(f)
+    # Remote id: ask the hub for the config only.
+    try:
+        from huggingface_hub import hf_hub_download
+        path = hf_hub_download(repo_id=model_id_or_path, filename="config.json")
+        with open(path) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def resolve_auto_model_class(model_id_or_path: str):
+    """Pick the right ``AutoModelFor*`` class for a model.
+
+    Dispatch order:
+
+    1. ``transformersInfo.auto_model`` on the model card, when present.
+    2. The ``architectures`` suffix (``*ForConditionalGeneration`` on a
+       multimodal config → ``AutoModelForImageTextToText``; Gemma4 declares
+       ``AutoModelForMultimodalLM``).
+    3. ``model_type`` membership in the known multimodal set.
+    4. ``AutoModelForCausalLM`` as the text-only fallback.
+    """
+    import transformers
+
+    cfg = read_model_config(model_id_or_path)
+
+    info = cfg.get("transformersInfo") or {}
+    if isinstance(info, dict):
+        declared = info.get("auto_model")
+        cls = getattr(transformers, declared, None) if declared else None
+        if cls is not None:
+            return cls
+
+    model_type = (cfg.get("model_type") or "").lower()
+    is_multimodal = model_type in _MULTIMODAL_MODEL_TYPES or any(
+        k in cfg for k in ("vision_config", "audio_config", "visual_config", "speech_config"))
+    # Any-to-any models (Gemma4 Unified) declare `AutoModelForMultimodalLM`;
+    # vision-language models declare `AutoModelForImageTextToText`. Both auto
+    # classes resolve to the same concrete architecture, so the split is a
+    # declaration-level distinction, not a behavioural one.
+    is_any_to_any = any(k in cfg for k in ("audio_config", "speech_config"))
+
+    archs = cfg.get("architectures") or []
+    arch = archs[0] if archs else ""
+    for suffix, auto_name in _ARCH_TO_AUTO:
+        if arch.endswith(suffix):
+            if suffix == "ForConditionalGeneration" and not is_multimodal:
+                continue
+            if suffix == "ForConditionalGeneration" and is_any_to_any:
+                cls = getattr(transformers, "AutoModelForMultimodalLM", None)
+                if cls is not None:
+                    return cls
+            cls = getattr(transformers, auto_name, None)
+            if cls is not None:
+                return cls
+
+    if is_multimodal:
+        ordered = ("AutoModelForMultimodalLM", "AutoModelForImageTextToText") \
+            if is_any_to_any else ("AutoModelForImageTextToText", "AutoModelForMultimodalLM")
+        for auto_name in ordered:
+            cls = getattr(transformers, auto_name, None)
+            if cls is not None:
+                return cls
+
+    return transformers.AutoModelForCausalLM
+
+
 def load_model(
     model_id_or_path: str,
     backend: Optional[BackendInfo] = None,
+    allow_non_torch: bool = False,
     **kwargs,
 ) -> Tuple[Any, Any]:
     """
@@ -241,16 +356,26 @@ def load_model(
     Args:
         model_id_or_path: HF model ID or local path
         backend: Detected backend (auto-detected if None)
+        allow_non_torch: Permit the MLX path. MLX models are not
+            ``torch.nn.Module`` s and cannot be used with TTT; leave this False
+            for any learning context.
         **kwargs: passed to from_pretrained (dtype, device_map, etc.)
 
     Returns:
         (model, tokenizer) tuple
     """
     if backend is None:
-        backend = detect_backend()
+        backend = detect_backend(require_torch=not allow_non_torch)
 
-    # MLX path
+    # MLX path — frozen inference only.
     if backend.name == "mlx" and backend.available:
+        if not allow_non_torch:
+            raise MLXUnsupportedForLearning(
+                "Refusing to load an MLX model for a learning context. MLX "
+                "models are not torch.nn.Module instances, so test-time "
+                "training cannot update their weights. Use the MPS backend "
+                "(--backend mps), or pass allow_non_torch=True for --no-ttt "
+                "frozen chat.")
         return _load_mlx(model_id_or_path)
 
     # PyTorch path (ROCm, CUDA, MPS, CPU)
@@ -259,40 +384,35 @@ def load_model(
 
 def _load_pytorch(model_id_or_path: str, backend: BackendInfo, **kwargs):
     """Load model via PyTorch + transformers."""
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from transformers import AutoTokenizer
     import torch
 
     apply_backend_patches(backend)
 
-    # Resolve path
     source = _resolve_model_path(model_id_or_path)
 
-    # Tokenizer
     tokenizer = AutoTokenizer.from_pretrained(source)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # Model kwargs
     model_kwargs = {
         "torch_dtype": kwargs.pop("torch_dtype", backend.torch_dtype),
         **kwargs,
     }
 
-    # Device map
     if backend.device == "cuda" and "device_map" not in model_kwargs:
         model_kwargs["device_map"] = "auto"
     elif backend.device == "mps":
         model_kwargs.pop("device_map", None)
 
-    # Offload unsupported kwargs for CPU
     if backend.device == "cpu":
         model_kwargs.pop("device_map", None)
         if model_kwargs.get("torch_dtype") == torch.bfloat16:
             model_kwargs["torch_dtype"] = torch.float32
 
-    model = AutoModelForCausalLM.from_pretrained(source, **model_kwargs)
+    auto_cls = resolve_auto_model_class(source)
+    model = auto_cls.from_pretrained(source, **model_kwargs)
 
-    # Move to device for MPS/CPU
     if backend.device in ("mps", "cpu"):
         try:
             model = model.to(backend.device)
@@ -349,9 +469,13 @@ def mlx_generate(model, tokenizer, prompt: str, max_tokens: int = 256,
 
 def generate_text(model, tokenizer, prompt: str, max_new: int = 128,
                   backend: Optional[BackendInfo] = None,
-                  stream: bool = False):
+                  stream: bool = False,
+                  return_completion: bool = False):
     """
     Unified text generation across backends.
+
+    By default returns **only the generated tokens** (the prompt is sliced off),
+    so callers can assert on the completion without prompt-echo contamination.
 
     Args:
         model: Model (PyTorch or MLX)
@@ -360,6 +484,7 @@ def generate_text(model, tokenizer, prompt: str, max_new: int = 128,
         max_new: Max new tokens
         backend: Backend info (auto-detect if None)
         stream: If True, yields tokens one at a time
+        return_completion: If True, return prompt+completion (legacy behaviour)
 
     Returns:
         Generated text string, or generator if stream=True
@@ -370,26 +495,28 @@ def generate_text(model, tokenizer, prompt: str, max_new: int = 128,
     if backend.name == "mlx" and backend.available:
         text = mlx_generate(model, tokenizer, prompt, max_new)
         if stream:
-            return (t for t in [text])  # MLX doesn't stream easily
-        return text
+            return (t for t in [text])
+        return text if return_completion else text
 
     # PyTorch path
     import torch
     inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512)
     inputs = {k: v.to(model.device) for k, v in inputs.items()}
+    prompt_len = inputs["input_ids"].shape[1]
 
     if stream:
         return _stream_generate(model, tokenizer, inputs, max_new)
-    else:
-        with torch.no_grad():
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=max_new,
-                do_sample=False,
-                temperature=1.0,
-                pad_token_id=tokenizer.eos_token_id,
-            )
+    with torch.no_grad():
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=max_new,
+            do_sample=False,
+            temperature=1.0,
+            pad_token_id=tokenizer.eos_token_id,
+        )
+    if return_completion:
         return tokenizer.decode(outputs[0], skip_special_tokens=True)
+    return tokenizer.decode(outputs[0][prompt_len:], skip_special_tokens=True)
 
 
 def _stream_generate(model, tokenizer, inputs, max_new: int):
@@ -421,10 +548,15 @@ def _resolve_model_path(model_id_or_path: str) -> str:
 
 
 def get_vram_usage(backend: BackendInfo) -> float:
-    """Get current VRAM usage in GB."""
+    """Get current device memory usage in GB."""
     import torch
     if backend.device == "cuda" and torch.cuda.is_available():
         return torch.cuda.memory_allocated() / 1024**3
+    if backend.device == "mps" and getattr(torch, "mps", None) is not None:
+        try:
+            return torch.mps.current_allocated_memory() / 1024**3
+        except Exception:
+            return 0.0
     return 0.0
 
 
@@ -441,6 +573,7 @@ def backend_summary(backend: BackendInfo) -> Dict[str, Any]:
         "gpu": backend.gpu_name,
         "vram_gb": round(backend.vram_gb, 1),
         "dtype": str(backend.torch_dtype).split(".")[-1],
+        "supports_ttt": backend.supports_ttt,
     }
 
 
@@ -452,3 +585,5 @@ def print_backend_info(backend: BackendInfo):
     if info["vram_gb"] > 0:
         print(f"   VRAM: {info['vram_gb']} GB")
     print(f"   Dtype: {info['dtype']}")
+    if not info["supports_ttt"]:
+        print("   ⚠ TTT unsupported on this backend (frozen inference only)")

@@ -12,7 +12,7 @@ from prokopton.config import ProkoptonCLIConfig, load_config, save_config
 class TestProkoptonCLIConfig:
     def test_defaults(self):
         cfg = ProkoptonCLIConfig()
-        assert cfg.lr == 1e-3
+        assert cfg.lr == 1e-2   # calibrated with parametrization="raw"
         assert cfg.n_layers == 5
         assert cfg.backend == ""
         assert cfg.model == ""
@@ -41,10 +41,10 @@ class TestProkoptonCLIConfig:
 
     def test_load_missing_file(self):
         cfg = ProkoptonCLIConfig.load(Path("/nonexistent/path/config.yaml"))
-        assert cfg.lr == 1e-3  # defaults
+        assert cfg.lr == 1e-2  # defaults
 
     def test_merge_cli_args(self):
-        cfg = ProkoptonCLIConfig(lr=0.001, n_layers=5)
+        cfg = ProkoptonCLIConfig(lr=0.01, n_layers=5)
         cfg.merge_cli_args(lr=0.01, backend="cuda")
         assert cfg.lr == 0.01
         assert cfg.backend == "cuda"

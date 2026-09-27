@@ -24,7 +24,7 @@ class ProkoptonCLIConfig:
     backend: str = ""  # "", "rocm", "cuda", "mps", "mlx", "cpu"
 
     # TTT
-    lr: float = 1e-3
+    lr: float = 1e-2
     n_layers: int = 5
 
     # Storage
@@ -36,7 +36,7 @@ class ProkoptonCLIConfig:
     quiet: bool = False
 
     # CMS
-    cms_rank: int = 16
+    cms_rank: int = 64
 
     @classmethod
     def load(cls, path: Optional[Path] = None) -> "ProkoptonCLIConfig":
